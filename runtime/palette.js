@@ -16,7 +16,7 @@ export const PALETTES = {
     hot: [1.0, 0.86, 0.86],
     sky: [0.012, 0.012, 0.016],
   },
-  /** Cyan with gold, after the Apex humanoid. */
+  /** Cyan with gold: the first palette. */
   classic: {
     dim: [0.09, 0.4, 1.0],
     main: [0.3, 0.8, 1.0],

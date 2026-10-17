@@ -1,4 +1,4 @@
-// The figure, after the Apex humanoid: an egg of a head drawn in horizontal
+// The figure: an egg of a head drawn in horizontal
 // slices bent over a face's relief inside a bright rim; the shoulders and
 // chest of a strong man under a honeycomb of hexagonal cells inside a faceted
 // neon outline; a double helix of veins down the neck to the sternum; a
