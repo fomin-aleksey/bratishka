@@ -1,0 +1,8 @@
+# Runtime state written by the server and the robot's Chrome window
+runtime/.chrome-profile/
+runtime/.token*
+runtime/settings.json
+runtime/server.log
+__pycache__/
+node_modules/
+.DS_Store

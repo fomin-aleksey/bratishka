@@ -1,0 +1,5 @@
+{
+  "name": "robot",
+  "version": "0.1.0",
+  "description": "A particle robot in its own window speaks Claude's answers with the local Silero voice; /robot opens it"
+}

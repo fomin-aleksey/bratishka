@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robot-token" content="__ROBOT_TOKEN__">
+  <meta name="robot-instance" content="__ROBOT_INSTANCE__">
+  <title>БратИИшка</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="stage" aria-label="Робот-собеседник"></canvas>
+
+  <header class="hud" id="hud">
+    <div class="brand">
+      <div class="brand-name">БРАТИИШКА</div>
+      <div class="brand-sub">VOICE INTERFACE · SILERO / EUGENE</div>
+    </div>
+    <div class="status-line"><span class="dot" id="statusDot"></span><span id="statusText">СБОРКА… 0%</span></div>
+  </header>
+
+  <div class="head-callout" aria-hidden="true">
+    <span class="hc-line" id="calloutA"></span>
+    <span class="hc-line" id="calloutB"></span>
+    <span class="hc-anchor" id="calloutAnchor"></span>
+  </div>
+  <div class="head-label" id="headLabel">
+    <span class="hl-caption">СТАТУС</span>
+    <span class="hl-word"><span class="hl-glow" id="headGlow"></span><span class="hl-dot" id="headDot"></span><span id="headWord">СБОРКА… 0%</span></span>
+  </div>
+
+  <aside class="monitor" id="monitor" aria-label="Жизненные показатели">
+    <div class="m-head">
+      <span class="m-title">МОНИТОР</span>
+      <span class="m-session" data-m="session" title="Сколько идёт сессия">0:00:00</span>
+    </div>
+    <div class="m-sub"><span data-m="model">—</span><span data-m="cost" title="Сколько стоит сессия">—</span></div>
+
+    <section class="m-block">
+      <div class="m-label">ЭКГ<span class="m-bpm"><span class="m-heart" data-m="heart">♥</span><b data-m="bpm">62</b>уд/мин</span></div>
+      <canvas class="m-trace" data-m="trace" aria-hidden="true"></canvas>
+      <div class="m-state"><span class="m-state-dot" data-m="stateDot"></span><span data-m="state">СЛУШАЮ</span></div>
+    </section>
+
+    <section class="m-block m-pair">
+      <div title="Сколько контекста ещё свободно">
+        <div class="m-label">КИСЛОРОД</div>
+        <div class="m-value" data-m="oxygen">—</div>
+        <div class="m-bar"><span data-m="oxygenBar"></span></div>
+        <div class="m-note">свободный контекст</div>
+      </div>
+      <div title="Сколько израсходовано лимитов подписки, в процентах из ста">
+        <div class="m-label">ДАВЛЕНИЕ</div>
+        <div class="m-limits">
+          <div><div class="m-value m-limit" data-m="five">—</div><div class="m-note">5 часов</div></div>
+          <div><div class="m-value m-limit" data-m="week">—</div><div class="m-note">неделя</div></div>
+        </div>
+        <div class="m-note" data-m="pressureNote">израсходовано</div>
+      </div>
+    </section>
+
+    <section class="m-block">
+      <div class="m-label">ДЕЙСТВИЯ</div>
+      <ul class="m-feed" data-m="feed"></ul>
+    </section>
+  </aside>
+
+  <nav class="controls" id="controls" aria-label="Управление">
+    <span class="controls-label">ОЗВУЧКА</span>
+    <div class="levels" role="radiogroup" aria-label="Сколько текста говорить">
+      <button type="button" role="radio" data-level="min">МИНИМУМ</button>
+      <button type="button" role="radio" data-level="mid">СРЕДНЕ</button>
+      <button type="button" role="radio" data-level="max">МАКСИМУМ</button>
+      <button type="button" role="radio" data-level="full">ВЕСЬ ТЕКСТ</button>
+    </div>
+    <span class="divider"></span>
+    <button type="button" class="tool" id="stopButton" title="Замолчать (Esc)">■ СТОП</button>
+    <button type="button" class="tool" id="monitorButton" title="Монитор показателей (V)">МОНИТОР</button>
+    <button type="button" class="tool" id="panelButton" title="Окно с текстом (T)">ТЕКСТ</button>
+    <button type="button" class="tool icon" id="fullButton" title="Во весь экран (F)" aria-label="Во весь экран">⛶</button>
+  </nav>
+
+  <aside class="panel" id="panel" aria-label="Переписка">
+    <div class="panel-head">
+      <span>ПЕРЕПИСКА</span>
+      <button type="button" class="tool icon" id="panelClose" title="Свернуть (T)" aria-label="Свернуть">›</button>
+    </div>
+    <div class="log" id="log">
+      <p class="log-empty" id="logEmpty">Здесь появится переписка. Пиши прямо отсюда: Enter отправляет, Shift+Enter переносит строку.</p>
+    </div>
+    <form class="composer" id="composer" autocomplete="off">
+      <textarea id="composerText" rows="1" maxlength="20000" placeholder="Напиши ему…" aria-label="Сообщение"></textarea>
+      <button type="submit" class="send" id="composerSend" aria-label="Отправить">➤</button>
+    </form>
+  </aside>
+
+  <div class="subtitles" id="subtitles" aria-live="polite"></div>
+
+  <div class="notice" id="notice" hidden></div>
+  <div class="overlay" id="overlay" hidden>
+    <div class="overlay-box">
+      <div class="overlay-title" id="overlayTitle"></div>
+      <div class="overlay-text" id="overlayText"></div>
+      <button type="button" class="tool" id="overlayButton"></button>
+    </div>
+  </div>
+
+  <script type="module" src="ui.js"></script>
+</body>
+</html>
