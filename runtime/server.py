@@ -26,6 +26,11 @@ Endpoints (127.0.0.1 only; POST bodies must be application/json):
   POST /api/stop                                   silence, drop the queue
 Exits after IDLE_SECONDS with no window listening.
 
+The person talks to the robot through Handy, a dictation app. The server
+follows Handy's log: the moment it starts recording, the robot falls silent
+as on Esc, and whatever it was about to say until the recording ends is
+silenced with its turn, so it never talks over the person.
+
 The window belongs to one Claude session, the one that ran /robot last (kept
 in settings.json, so a restart keeps it): only that session takes its prompts,
 and only its X-Robot-Session header gets an answer, a status or speech in.
@@ -124,6 +129,25 @@ TURN_ID = SESSION_ID
 # How many silenced turns are remembered: only the latest ever speak again.
 MUTED = 16
 
+# Handy's log; ROBOT_HANDY_LOG points a test server at a log of its own.
+HANDY_LOG = Path(
+    os.environ.get("ROBOT_HANDY_LOG", Path.home() / "Library" / "Logs" / "com.pais.handy" / "handy.log")
+)
+# A recording starting: the talk key's action (a debug line) and the
+# microphone opening ~0.2 s later (an info line, kept at a quieter log level).
+HANDY_STARTS = re.compile(r"TranscribeAction::start called|Microphone stream initialized")
+# A recording over: released, cancelled or transcribed.
+HANDY_ENDS = re.compile(
+    r"TranscribeAction::stop called|Microphone stream stopped"
+    r"|Unregistered handy-keys shortcut: cancel|Transcription completed in"
+)
+HANDY_POLL_SECONDS = 0.05
+# The most of the log read at a time.
+HANDY_CHUNK = 256 * 1024
+# How long the robot keeps quiet after a recording starts when its end never
+# shows in the log.
+HEARING_SECONDS = 60
+
 
 def is_session(value: object) -> bool:
     return isinstance(value, str) and bool(SESSION_ID.match(value))
@@ -154,6 +178,8 @@ class Hub:
         # an answer said while it is written keeps sending words after a stop.
         self.speaking_turn: str | None = None
         self.muted: tuple[str, ...] = ()
+        # Until when the person is speaking, in monotonic seconds: 0 when not.
+        self.hearing_until = 0.0
         self.last_listener = time.monotonic()
         self.token = secrets.token_urlsafe(24)
         self.instance = secrets.token_hex(6)  # a page from another run reloads
@@ -309,8 +335,29 @@ class Hub:
         return job
 
     def is_muted(self, turn: str | None) -> bool:
+        """Whether `turn` is silenced. While the person speaks everything is,
+        and a turn that tries to speak then stays silenced."""
         with self.lock:
+            if time.monotonic() < self.hearing_until:
+                if turn is not None and turn not in self.muted:
+                    self.muted = (*self.muted, turn)[-MUTED:]
+                return True
             return turn is not None and turn in self.muted
+
+    def hear(self) -> None:
+        """The person started speaking: silence now, and until they are done."""
+        with self.lock:
+            self.hearing_until = time.monotonic() + HEARING_SECONDS
+        self.stop()
+
+    def heard(self) -> None:
+        """The person stopped speaking: the robot may talk again."""
+        with self.lock:
+            self.hearing_until = 0.0
+
+    def hearing(self) -> bool:
+        with self.lock:
+            return time.monotonic() < self.hearing_until
 
     def enqueue(self, text: str, speaker: str, turn: str | None = None) -> tuple[int, threading.Event]:
         job = next(self.jobs)
@@ -477,6 +524,56 @@ def idle_watch(server: ThreadingHTTPServer) -> None:
             log("no window for a while, exiting")
             server.shutdown()
             return
+
+
+class LogTail:
+    """The whole lines a log gains. What it held when first seen is skipped;
+    a log rotated or cut short is read again from its start."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.seen = False
+        self.inode = 0
+        self.position = 0
+        self.rest = b""
+
+    def lines(self) -> list[str]:
+        try:
+            stat = self.path.stat()
+        except OSError:
+            return []
+        if not self.seen:
+            self.seen = True
+            self.inode, self.position = stat.st_ino, stat.st_size
+            return []
+        if stat.st_ino != self.inode or stat.st_size < self.position:
+            self.inode, self.position, self.rest = stat.st_ino, 0, b""
+        if stat.st_size == self.position:
+            return []
+        try:
+            with self.path.open("rb") as file:
+                file.seek(self.position)
+                chunk = file.read(HANDY_CHUNK)
+        except OSError:
+            return []
+        self.position += len(chunk)
+        *whole, rest = (self.rest + chunk).split(b"\n")
+        self.rest = rest[-HANDY_CHUNK:]
+        return [line.decode("utf-8", "replace") for line in whole]
+
+
+def handy_watch() -> None:
+    """Keeps the robot quiet while Handy records the person speaking."""
+    tail = LogTail(HANDY_LOG)
+    while True:
+        time.sleep(HANDY_POLL_SECONDS)
+        for line in tail.lines():
+            # One recording logs two starts: the second must not silence again.
+            if HANDY_STARTS.search(line) and not HUB.hearing():
+                log("the person is speaking: silent")
+                HUB.hear()
+            elif HANDY_ENDS.search(line):
+                HUB.heard()
 
 
 # ------------------------------------------------------------------ HTTP
@@ -770,6 +867,9 @@ class Handler(BaseHTTPRequestHandler):
         if HUB.listening() == 0:
             self.send_json(HTTPStatus.CONFLICT, {"error": "no window"})
             return
+        if HUB.hearing():
+            self.send_json(HTTPStatus.OK, {"muted": True})
+            return
         self.send_json(HTTPStatus.OK, {"job": HUB.greet()})
 
     def post_done(self, data: dict) -> None:
@@ -805,6 +905,7 @@ def main() -> int:
     threading.Thread(target=speaker_loop, daemon=True).start()
     threading.Thread(target=idle_watch, args=(server,), daemon=True).start()
     threading.Thread(target=warm_watch, daemon=True).start()
+    threading.Thread(target=handy_watch, daemon=True).start()
     log(f"robot server on http://{HOST}:{PORT}")
     try:
         server.serve_forever()
