@@ -572,6 +572,8 @@ test('while the robot listens to this session, the model answers in its manner',
 
   expect(sections.map(section => section.id)).toEqual(['intro', 'robot:persona'])
   expect(sections[1]?.scope).toBe('session')
+  expect(sections[1]?.text).toContain('барыга из лихих девяностых')
+  expect(sections[1]?.text).toContain('без подробностей насилия')
   expect(sections[1]?.text).toContain('Угар в каждой фразе')
   expect(sections[1]?.text).toContain('Мат — основа речи')
   expect(sections[1]?.text).toContain('обычным профессиональным языком')
