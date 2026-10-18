@@ -1,7 +1,7 @@
 // The robot window: events from the server, the speech queue, the analyser
 // that lights the robot, subtitles, the text panel and the controls.
 
-import { DEMO_VITALS, createMic, createTalk, demoCalls, demoCycle, fakeVoice, headPose } from './alive.js'
+import { DEMO_VITALS, createLife, createMic, createTalk, demoCalls, demoCycle, fakeVoice } from './alive.js'
 import { createMonitor, monitorState } from './monitor.js'
 import { createRobot } from './robot.js'
 import { WORDS, assembling, createStatus } from './status.js'
@@ -639,6 +639,7 @@ let introStart = skipIntro ? -1e9 : performance.now()
 const introBuild = now => (now - introStart) / 1000 / INTRO_SECONDS
 
 const talk = createTalk()
+const life = createLife()
 const monitor = createMonitor($('monitor'))
 const status = createStatus({
   label: $('headLabel'),
@@ -738,6 +739,16 @@ function tick(now) {
   motion.center += (monitorWidth + (width - panelWidth - monitorWidth) / 2 - motion.center) * ease
   motion.free += (width - panelWidth - monitorWidth - motion.free) * ease
   const build = introBuild(now)
+  const pose = life(now / 1000, dt, { think: motion.think, speak: motion.speak, level: motion.level })
+  const state = monitorState({
+    talking: motion.talking,
+    thinking: isThinking(),
+    actions: monitor.actions(),
+    failAt,
+    now: Date.now() / 1000,
+  })
+  // The monitor keeps the heartbeat: the heart in the chest beats with it.
+  const { sinceBeat } = monitor.frame(dt, { state, level: motion.level, mic: motion.mic * motion.listen })
   const view = robot.frame({
     time: now / 1000,
     flow: motion.flow,
@@ -748,21 +759,15 @@ function tick(now) {
     build,
     centerPx: motion.center,
     freePx: motion.free,
-    head: headPose(now / 1000),
+    head: pose.head,
+    sway: pose.sway,
     onset: motion.onset,
     offset: motion.offset,
     mic: motion.mic * motion.listen,
     ear: motion.ear,
+    sinceBeat,
   })
   followSubtitle()
-  const state = monitorState({
-    talking: motion.talking,
-    thinking: isThinking(),
-    actions: monitor.actions(),
-    failAt,
-    now: Date.now() / 1000,
-  })
-  const { sinceBeat } = monitor.frame(dt, { state, level: motion.level, mic: motion.mic * motion.listen })
   // The status beside the head, its line to the temple, beating with the heart.
   status.show(
     build < 1 ? assembling(build) : WORDS[state],

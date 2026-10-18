@@ -1,13 +1,13 @@
 // The figure: an egg of a head drawn in horizontal
 // slices bent over a face's relief inside a bright rim; the shoulders and
 // chest of a strong man under a honeycomb of hexagonal cells inside a faceted
-// neon outline; a double helix of veins down the neck to the sternum; a
-// tuft of sparks off the crown and a few more drifting off the shoulders.
+// neon outline; a tuft of sparks off the crown and a few more drifting off
+// the shoulders. The heart in the chest is only light: the shaders draw it.
 //
 // Every figure particle carries in its last float the moment it lands in
 // the intro (see arrival() in kinds.js).
 
-import { BUST_END, HEAD, KIND, STERNUM, arrival, random, smooth, variety } from './kinds.js'
+import { BUST_END, HEAD, KIND, arrival, random, smooth, variety } from './kinds.js'
 
 /** A smooth function through (x, y) points sorted by x: cubic Hermite, Catmull-Rom tangents. */
 function curve(points) {
@@ -162,9 +162,24 @@ const norm = (a, b) => {
   return [a / len, b / len]
 }
 
-/** The head: horizontal slices bent over the face's relief, each point knowing how far it stands out (for the head's turn). */
+/**
+ * How far round the back each slice of the head goes past its side, in
+ * radians: out of sight while the head faces ahead, there to fill the side
+ * it turns away from.
+ */
+const BACK = 0.6
+/** The spacing of the points round the back, along the slice. */
+const BACK_STEP = 0.0014
+
+/**
+ * The head: horizontal slices bent over the face's relief, each point
+ * knowing how far it stands out and the radius of its slice (for the head's
+ * turn). The back of each slice draws on random numbers of its own, so the
+ * rest of the scene comes out as it always has.
+ */
 function buildHead(rnd, push) {
   const LINES = 34
+  const own = random(31)
   for (let j = 0; j < LINES; j++) {
     const v = 0.955 - (1.91 * j) / (LINES - 1)
     const half = headWidth(v) * HEAD_W * 0.975
@@ -181,9 +196,24 @@ function buildHead(rnd, push) {
       const edge = smooth(0.8, 1, Math.abs(u))
       const size = (1.7 + 0.4 * edge) * variety(rnd, 0.02)
       const at = arrival(x, y, rnd, 0.12)
-      push(x, y, u, v, depth, edge, KIND.ring, size, at)
+      push(x, y, u, v, depth, half, KIND.ring, size, at)
       if (rnd() < 0.55) {
-        push(x + (rnd() - 0.5) * 0.001, y + (rnd() - 0.5) * 0.002, u, v, depth, edge, KIND.ring, size * 0.8, at)
+        push(x + (rnd() - 0.5) * 0.001, y + (rnd() - 0.5) * 0.002, u, v, depth, half, KIND.ring, size * 0.8, at)
+      }
+    }
+    const back = Math.max(2, Math.round((half * BACK) / BACK_STEP))
+    for (const side of [-1, 1]) {
+      for (let k = 1; k <= back; k++) {
+        const a = (BACK * k) / back
+        const x = side * half * Math.cos(a)
+        const depth = -half * Math.sin(a)
+        const y = yc + lean * depth
+        const size = 2.1 * variety(own, 0.02)
+        const at = arrival(x, y, own, 0.12)
+        push(x, y, x / half, v, depth, half, KIND.ring, size, at)
+        if (own() < 0.55) {
+          push(x + (own() - 0.5) * 0.001, y + (own() - 0.5) * 0.002, x / half, v, depth, half, KIND.ring, size * 0.8, at)
+        }
       }
     }
   }
@@ -227,38 +257,6 @@ function buildNeck(rnd, push) {
       if (insideHead(x, py) || rnd() < 0.3) continue
       push(x, py, (0.04 - y) / 0.12, u, 0, 0, KIND.neck, 1.2 * variety(rnd, 0.03), arrival(x, py, rnd, 0.1))
     }
-  }
-}
-
-/**
- * Veins of light down the neck as a double helix: two strands twisting round
- * each other from under the chin to the sternum, rungs between them.
- */
-function buildVeins(push) {
-  // A generator of its own: the helix keeps its look whatever else draws.
-  const own = random(4242)
-  const TOP = 0.0
-  // The strands cross every PI / 38 down the neck; the twist right under the
-  // chin is left out, so the helix starts at its first crossing.
-  const START = TOP - Math.PI / 38
-  const along = y => (TOP - y) / (TOP - STERNUM[1])
-  const dot = (x, y, branch, size) => {
-    const t = along(y)
-    const at = Math.min(1, 0.5 + 0.42 * t + 0.06 * own())
-    push(x, y, t, branch, own(), 0, KIND.vein, size * variety(own, 0.05), at)
-    push(x + (own() - 0.5) * 0.003, y + (own() - 0.5) * 0.002, t, branch, own(), 0, KIND.vein, size * 0.67, at)
-  }
-  const amplitude = y => 0.035 + 0.02 * along(y)
-  for (let y = START; y > STERNUM[1] + 0.01; y -= 0.0022) {
-    const x = amplitude(y) * Math.sin(y * 38)
-    dot(x, y, 0, 1.9)
-    dot(-x, y, 0, 1.9)
-  }
-  // Rungs, where the strands are apart; dimmer, as side branches.
-  for (let y = START - 0.02; y > STERNUM[1] + 0.02; y -= 0.022) {
-    const x = Math.abs(amplitude(y) * Math.sin(y * 38))
-    if (x <= 0.008) continue
-    for (let px = -x; px <= x; px += 0.003) dot(px, y, 1, 1.2)
   }
 }
 
@@ -337,7 +335,7 @@ const bodyLight = (x, y) => {
 /**
  * The body: a honeycomb of hexagonal cells laid over a strong man's
  * shoulders and chest, each as bright as the muscle under it catches the
- * light, a few glowing; a cluster of sparks at the sternum.
+ * light, a few glowing.
  */
 function buildHoneycomb(rnd, push) {
   // A generator of its own: the same cells glow whatever else draws.
@@ -384,13 +382,6 @@ function buildHoneycomb(rnd, push) {
       }
     }
   }
-  for (let i = 0; i < 380; i++) {
-    const r = Math.abs(rnd() + rnd() - 1) * 0.04
-    const a = rnd() * Math.PI * 2
-    const x = STERNUM[0] + Math.cos(a) * r * 0.8
-    const y = STERNUM[1] + Math.sin(a) * r
-    push(x, y, 0, 0, 2, 0, KIND.torso, 1.5 * variety(rnd, 0.1), arrival(x, y, rnd, 0.25))
-  }
 }
 
 /** Sparks off the head: a tuft rising from the crown like a flame, a few off the temples. */
@@ -427,7 +418,6 @@ export function buildFigure(rnd, push, bottom) {
   buildHead(rnd, push)
   buildRim(rnd, push)
   buildNeck(rnd, push)
-  buildVeins(push)
   buildOutline(rnd, push, bottom)
   buildHoneycomb(rnd, push)
   buildAura(rnd, push)

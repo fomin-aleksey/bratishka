@@ -5,7 +5,6 @@
 export const KIND = {
   ring: 0,
   neck: 2,
-  vein: 3,
   torso: 4,
   aura: 5,
   mountain: 6,
@@ -18,8 +17,8 @@ export const KIND = {
 }
 
 export const HEAD = [0, 0.31]
-/** Where the veins end in a cluster of sparks, and where the orb of the intro shines. */
-export const STERNUM = [0, -0.4]
+/** Where the heart beats, a little to the robot's left, and where the orb of the intro shines. */
+export const HEART = [0.05, -0.28]
 /** The world height the camera looks at: the bust fills the window down to the chest. */
 export const CAM_Y = 0.2
 /** Where the bust ends: the body fades out below the middle of the chest. */

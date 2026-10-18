@@ -10,8 +10,9 @@
 // over a procedural background. The head's pose and the sparks it thinks
 // with come from head.js.
 
-import { BUST_END, CAM_Y, FLOATS, HEAD, KIND, STERNUM } from './kinds.js'
+import { BUST_END, CAM_Y, FLOATS, HEAD, HEART, KIND } from './kinds.js'
 import { figureHalfWidth } from './figure.js'
+import { pulseAt } from './alive.js'
 import { HEAD_GLSL, HEAD_KINDS, headFrame } from './head.js'
 import { PALETTE as P, glsl } from './palette.js'
 import { buildScene } from './scene.js'
@@ -29,7 +30,9 @@ const vec2 = ([x, y]) => `vec2(${x.toFixed(3)}, ${y.toFixed(3)})`
 const COMMON = `
 const vec2 HEAD = ${vec2(HEAD)};
 const vec2 CORE = vec2(0.0, 0.22);
-const vec2 ORB = ${vec2(STERNUM)};
+const vec2 HEART = ${vec2(HEART)};
+// The orb the figure streams out of in the intro: the heart.
+const vec2 ORB = HEART;
 const float CAM_Y = ${CAM_Y.toFixed(3)};
 const float BUST_END = ${BUST_END.toFixed(3)};`
 
@@ -76,6 +79,8 @@ uniform float u_onset;
 uniform float u_offset;
 uniform float u_mic;
 uniform float u_ear;
+// The heart: where its glow is now, how full it is (0 to 1), seconds since it beat.
+uniform vec4 u_heart;
 
 out vec3 v_color;
 out float v_alpha;
@@ -122,6 +127,28 @@ float glint(float x, float near) {
   return pow(0.5 + 0.5 * sin(abs(x) * 2.2 + near * 1.5 - u_time * 0.35), 6.0);
 }
 
+/**
+ * A point of the neck or the body, turned with the shoulders and, up the
+ * neck, more and more with the head; widened and lifted by the breath and
+ * tipped by the shoulders' roll. How far in front it stands is guessed from
+ * where it is: the neck a column, the chest a flattened barrel.
+ */
+vec2 moveBody(vec2 p) {
+  float up = smoothstep(-0.2, 0.06, p.y);
+  float wide = mix(0.6, 0.13, up);
+  float depth = mix(0.24, 0.13, up) * sqrt(max(0.0, 1.0 - (p.x / wide) * (p.x / wide)));
+  float yaw = mix(u_sway.z, u_head.x * 0.55, smoothstep(-0.1, 0.1, p.y));
+  p.x = p.x * cos(yaw) + depth * sin(yaw);
+  float breath = u_head.w;
+  p = vec2(0.0, -0.35) + (p - vec2(0.0, -0.35)) * (1.0 + 0.01 * breath);
+  // The shoulders rise as it breathes in.
+  float shoulder = smoothstep(0.15, 0.45, abs(p.x)) * smoothstep(-0.5, -0.2, p.y) * (1.0 - smoothstep(-0.12, 0.05, p.y));
+  p.y += 0.007 * breath * shoulder;
+  float r = u_sway.w * (1.0 - up);
+  vec2 d = p - vec2(0.0, -0.3);
+  return vec2(0.0, -0.3) + vec2(d.x * cos(r) - d.y * sin(r), d.x * sin(r) + d.y * cos(r));
+}
+
 void main() {
   int kind = int(a_q.x + 0.5);
   float size = a_q.y;
@@ -130,16 +157,18 @@ void main() {
   vec3 col = DIM;
   float alpha = 1.0;
   float lv = u_level * u_speak;
-  float breathe = 0.5 + 0.5 * sin(u_time * 0.9);
+  // How full the chest is: 0 to 1, up to 2 in a sigh.
+  float breathe = u_head.w;
   float pulse = 0.5 + 0.5 * sin(u_time * 3.4);
 
   if (kind == 0) {
     // Head: slices over the face's relief, and the rim. The face glows from
     // within, ripples and drops its jaw with the voice; the temples tremble
-    // with the person's voice while it listens; the whole head sways.
+    // with the person's voice while it listens; the whole head turns. A
+    // slice point keeps its slice's radius in a_p.w; the rim's points a 1.
     float u = a_p.x;
     float v = a_p.y;
-    float edge = a_p.w;
+    float outline = step(0.5, a_p.w);
     float face = (1.0 - smoothstep(0.55, 0.95, abs(u))) * smoothstep(-0.97, -0.62, v) * (1.0 - smoothstep(0.25, 0.6, v));
     float ripple = sin(u * 7.0 + u_flow * 3.2 + v * 23.0) + 0.5 * sin(u * 17.0 - u_flow * 2.1 + v * 9.0);
     pos.y += ripple * face * (0.0015 + 0.009 * lv);
@@ -147,7 +176,14 @@ void main() {
     float temple = smoothstep(0.55, 0.95, abs(u)) * (1.0 - smoothstep(0.3, 0.65, abs(v - 0.12))) * u_mic;
     pos.x += sign(u) * temple * 0.007 * (0.4 + 0.6 * sin(u_time * 37.0 + v * 45.0 + seed * 25.0));
     pos = HEAD + (pos - HEAD) * (1.0 + 0.006 * (breathe - 0.5));
-    pos = poseHead(pos, a_p.z, clamp(0.26 * (v + 0.1), -0.2, 0.14));
+    vec4 posed = poseHeadPoint(pos, a_p.z, clamp(0.26 * (v + 0.1), -0.2, 0.14), outline);
+    pos = posed.xy;
+    // Bright where the slice runs out at the head's edge, wherever that is now.
+    float across = sqrt(1.0 - pow(clamp(posed.w / max(a_p.w, 0.001), 0.0, 1.0), 2.0));
+    float edge = mix(smoothstep(0.8, 1.0, across), 1.0, outline);
+    // Round the back it is hidden; brought nearer, a little bigger and brighter.
+    float shown = mix(smoothstep(-0.012, 0.0, posed.w), 1.0, outline);
+    float nearer = posed.z - a_p.z;
     float h = heat(pos);
     float rim = smoothstep(0.9, 1.0, edge);
     col = mix(DIM, MAIN, 0.35 + 0.65 * edge);
@@ -161,28 +197,15 @@ void main() {
     alpha += h * (1.15 + 1.1 * lv + 0.6 * u_think);
     alpha += rim * (0.15 + 0.5 * lv) + temple * 0.8;
     size *= 1.0 + h * (0.6 + 1.2 * lv + 0.5 * u_think);
+    alpha *= shown * clamp(1.0 + 1.6 * nearer, 0.6, 1.4);
+    size *= clamp(1.0 + 1.4 * nearer, 0.7, 1.3);
   } else if (kind == 2) {
     // Neck slices, faint.
     col = mix(DIM, MAIN, 0.35);
     alpha = 0.3 * (1.0 - 0.5 * a_p.x);
-  } else if (kind == 3) {
-    // Veins: pulses run down them, fast while it speaks.
-    float run = smoothstep(0.8, 1.0, 0.5 + 0.5 * sin(a_p.x * 26.0 - u_flow * 5.0 + a_p.z * 6.0));
-    float flicker = 0.8 + 0.2 * sin(u_time * 9.0 + a_p.z * 40.0);
-    col = mix(ACCENT, GLOW, a_p.y * 0.5 + 0.15);
-    col = mix(col, HOT, run * 0.6);
-    alpha = (0.9 + 0.25 * breathe + 0.35 * u_think * pulse + (0.3 + 1.4 * run) * lv) * flicker * (1.0 - 0.35 * a_p.y);
-    size *= 1.25 + run * (0.3 + lv);
   } else if (kind == 4) {
-    // The body. The chest breathes.
-    pos = vec2(0.0, -0.35) + (pos - vec2(0.0, -0.35)) * (1.0 + 0.005 * (breathe - 0.5));
-    if (a_p.z > 1.5 && a_p.z < 2.5) {
-      // The sternum's cluster of sparks.
-      float twinkle = 0.6 + 0.4 * sin(u_time * (3.0 + seed * 5.0) + seed * 60.0);
-      col = mix(MAIN, PALE, 0.5 + 0.5 * hash(seed * 3.0));
-      col = mix(col, ACCENT, step(0.8, seed) * 0.8);
-      alpha = (0.55 + 0.6 * lv + 0.3 * u_think * pulse) * twinkle;
-    } else if (a_p.z > 0.5 && a_p.z < 1.5) {
+    // The body.
+    if (a_p.z > 0.5 && a_p.z < 1.5) {
       // The outline: a neon tube.
       col = mix(MAIN, PALE, 0.1);
       alpha = 0.95 + 0.5 * lv;
@@ -195,13 +218,21 @@ void main() {
       col = mix(DIM, MAIN, 0.25 + 0.45 * a_p.x + 0.25 * border);
       alpha = (0.18 + 0.5 * a_p.x + 0.25 * border) * (0.85 + 0.15 * breathe) + run * (0.12 * u_think + 0.55 * lv);
       col = mix(col, ACCENT, run * lv * 0.35);
+      // The heart is only light: the cells round it warm to red and flare
+      // with each beat, as the face does round its core.
+      float hh = clamp(1.0 - length((pos - HEART) / vec2(0.15, 0.16)), 0.0, 1.0);
+      float beat = u_heart.z;
+      col = mix(col, mix(GLOW, ACCENT, 0.25 + 0.5 * hh), smoothstep(0.0, 0.4, hh) * (0.75 + 0.25 * beat));
+      col = mix(col, HOT, smoothstep(0.5, 1.0, hh) * (0.25 + 0.75 * beat));
+      alpha += hh * (0.3 + 0.9 * beat);
+      size *= 1.0 + hh * (0.25 + 0.5 * beat);
     }
   } else if (kind == 5) {
     // Sparks rising off the crown and the temples like a flame; the voice
     // throws them far, and the person's voice a little while it listens.
     vec2 n = normalize((pos - HEAD) / vec2(1.0, 1.3));
     vec2 dir = normalize(n + vec2(0.0, 0.85));
-    pos = poseHead(pos, 0.0, 0.0);
+    pos = poseHeadPoint(pos, 0.0, 0.0, 1.0).xy;
     float t = fract(u_flow * a_p.y * 0.09 + a_p.z);
     float reach = a_p.w * (1.0 + 3.2 * lv + 0.9 * u_think + 1.2 * u_mic);
     pos += dir * t * reach;
@@ -263,12 +294,16 @@ ${HEAD_KINDS}
     alpha = 0.08 + 0.25 * twinkle;
   }
 
-  // The neck and the top of the body bend a little with the head's sway.
-  if (kind == 2 || kind == 3 || kind == 4 || kind == 12) pos = swayHead(pos, smoothstep(-0.14, 0.12, pos.y));
+  // The neck and the body move with the shoulders and the breath, and the
+  // top of the neck bends a little with the head's sway.
+  if (kind == 2 || kind == 4 || kind == 12) {
+    pos = moveBody(pos);
+    pos = swayHead(pos, smoothstep(-0.14, 0.12, pos.y));
+  }
 
   // Starting to speak, a flash runs down the figure from the crown; falling
   // silent, its light ebbs away down it, slower.
-  if (kind == 0 || kind == 2 || kind == 3 || kind == 4) {
+  if (kind == 0 || kind == 2 || kind == 4) {
     float flash = exp(-pow((pos.y - 0.66 + u_onset * 1.6) / 0.03, 2.0)) * (1.0 - smoothstep(0.45, 0.75, u_onset));
     float ebb = exp(-pow((pos.y - 0.66 + u_offset * 0.75) / 0.06, 2.0)) * (1.0 - smoothstep(1.0, 1.5, u_offset));
     col = mix(col, PALE, flash * 0.6);
@@ -278,7 +313,7 @@ ${HEAD_KINDS}
   }
 
   // The bust ends at the chest: the body fades out below it.
-  if (kind == 2 || kind == 3 || kind == 4 || kind == 12) alpha *= smoothstep(BUST_END - 0.16, BUST_END, pos.y);
+  if (kind == 2 || kind == 4 || kind == 12) alpha *= smoothstep(BUST_END - 0.16, BUST_END, pos.y);
 
   bool back = kind == 6 || kind == 7 || (kind >= 9 && kind <= 11);
   if (back) {
@@ -306,6 +341,11 @@ ${HEAD_KINDS}
   vec2 world = (pos - vec2(0.0, CAM_Y)) * u_zoom + vec2(u_shift, 0.0);
   gl_Position = vec4(world / u_view, 0.0, 1.0);
   gl_PointSize = max(1.0, size * u_px * u_zoom);
+  // Nothing to draw: off the screen, so it costs no pixels.
+  if (alpha <= 0.0005) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    gl_PointSize = 0.0;
+  }
   v_color = col;
   v_alpha = alpha;
   v_back = back ? 1.0 : 0.0;
@@ -386,6 +426,7 @@ uniform float u_speak;
 uniform float u_think;
 uniform float u_build;
 uniform float u_reveal;
+uniform vec4 u_heart;
 out vec4 o;
 ${COMMON}
 ${HEAD_GLSL}
@@ -397,7 +438,7 @@ void main() {
   vec2 screen = (v_uv * 2.0 - 1.0) * u_view;
   vec2 w = (screen - vec2(u_shift, 0.0)) / u_zoom + vec2(0.0, CAM_Y);
   float lv = u_level * u_speak;
-  float breathe = 0.5 + 0.5 * sin(u_time * 0.9);
+  float breathe = u_head.w;
   float pulse = 0.5 + 0.5 * sin(u_time * 3.4);
   // The figure's own glow comes with the figure.
   float shown = smoothstep(0.35, 0.9, u_build);
@@ -418,6 +459,12 @@ void main() {
       bg += ${glsl(P.glow)} * exp(-sd / 0.0012) * near * 0.8 + ${glsl(P.hot, 0.9)} * exp(-sd / 0.00012) * near * 0.6;
     }
   }
+
+  // The heart: a red glow in the chest, as the core's in the face, swelling
+  // with each beat of the monitor's pulse.
+  float hdist = length((w - u_heart.xy) / vec2(0.14, 0.14));
+  bg += ${glsl(P.glow)} * exp(-hdist * hdist * 1.6) * (0.22 + 0.45 * u_heart.z) * shown;
+  bg += ${glsl(P.hot, 0.9)} * exp(-hdist * hdist * 4.5) * (0.05 + 0.3 * u_heart.z) * shown;
 
   // The orb the figure streams out of.
   float orb = smoothstep(0.0, 0.06, u_build) * (1.0 - smoothstep(0.92, 1.12, u_build));
@@ -497,7 +544,8 @@ const revealAt = build => (build < 1 ? 0 : build >= 1 + REVEAL ? 99 : ((build - 
 /**
  * Draws the robot into `canvas`. `frame(state)` renders one frame:
  * { time, flow, level, speak, think, listen, build, centerPx, freePx } and
- * the head's { head, onset, offset, mic, ear } (see alive.js).
+ * the head's { head, sway, onset, offset, mic, ear } (see alive.js) and
+ * how long ago the heart beat, { sinceBeat }.
  * `build` runs from 0 to 1 over the intro and stays past 1 after it.
  */
 export function createRobot(canvas) {
@@ -625,7 +673,16 @@ export function createRobot(canvas) {
     const zoom = zoomFor(state.freePx / (cssH / 2))
     const reveal = revealAt(state.build)
     // The head's figures that are one per frame, worked out once here.
-    const head = headFrame(state.head, state.time, state.think)
+    const pose = { head: state.head, sway: state.sway }
+    const head = headFrame(pose, state.time, state.think)
+    // The heart's glow as the shoulders turn it, how full it is, its beat.
+    const since = state.sinceBeat ?? 9
+    const heart = [
+      HEART[0] * Math.cos(state.sway[2]) + 0.2 * Math.sin(state.sway[2]),
+      HEART[1],
+      pulseAt(since),
+      since,
+    ]
 
     // Particles.
     gl.bindFramebuffer(gl.FRAMEBUFFER, targets.scene.fbo)
@@ -654,6 +711,8 @@ export function createRobot(canvas) {
     gl.uniform1f(u.u_mic, state.mic)
     gl.uniform1f(u.u_ear, state.ear)
     gl.uniform4fv(u.u_head, state.head)
+    gl.uniform4fv(u.u_sway, state.sway)
+    gl.uniform4fv(u.u_heart, heart)
     gl.uniform2fv(u.u_core, head.core)
     gl.uniform2fv(u.u_crown, head.crown)
     gl.uniform3fv(u['u_orbits[0]'], head.orbits)
@@ -687,6 +746,8 @@ export function createRobot(canvas) {
       gl.uniform1f(cu.u_build, state.build)
       gl.uniform1f(cu.u_reveal, reveal)
       gl.uniform4fv(cu.u_head, state.head)
+      gl.uniform4fv(cu.u_sway, state.sway)
+      gl.uniform4fv(cu.u_heart, heart)
       gl.uniform2fv(cu.u_core, head.core)
       gl.uniform2fv(cu.u_crown, head.crown)
       gl.uniform3fv(cu['u_orbits[0]'], head.orbits)

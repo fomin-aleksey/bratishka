@@ -1,6 +1,7 @@
-// The living head. It sways a little all the time, as a man's does standing
-// still, and while it thinks the red fire of its core splits into sparks
-// circling inside it.
+// The living head. It turns, nods and tilts about the top of the neck as a
+// head does, in depth: the slices of the face slide round it, what comes
+// nearer grows a little and what goes round the back is hidden. While it
+// thinks the red fire of its core splits into sparks circling inside it.
 //
 // This file holds the particles of the sparks' trails, the GLSL the shaders
 // share for the head's pose and the orbits, and the same math in JS for what
@@ -21,41 +22,73 @@ const CORE_DEPTH = 0.16
 const PIVOT = [0, 0.03]
 const ORBIT_CENTER = [0, 0.44]
 const PITCH = 0.4
+/** How much bigger a point looks for each unit it comes nearer: the head's depth. */
+const NEAR = 0.45
+/**
+ * How much of a point's height above the head's centre tips its facing as the
+ * head nods: the head's width over its height, squared, as on an ellipsoid.
+ */
+const TIP = 0.45
 
 /**
  * GLSL for the shaders that place the head: its pose, the core's fire and
  * the orbits. Needs HEAD and CORE declared before it.
  */
 export const HEAD_GLSL = `
+// yaw, pitch, roll, breath; and dx, dy, the shoulders' yaw and roll.
 uniform vec4 u_head;
+uniform vec4 u_sway;
 // This frame's figures, from headFrame() below.
 uniform vec2 u_core;
 uniform vec2 u_crown;
 uniform vec3 u_orbits[${ORBITS}];
 const vec2 PIVOT = vec2(${f(PIVOT[0])}, ${f(PIVOT[1])});
 const float CORE_DEPTH = ${f(CORE_DEPTH)};
+const float NEAR = ${f(NEAR)};
+const float TIP = ${f(TIP)};
 // Up in the skull, above the eyes: where the brain would be.
 const vec2 ORBIT_CENTER = vec2(${f(ORBIT_CENTER[0])}, ${f(ORBIT_CENTER[1])});
 
 /**
- * A point of the head \`z\` in front of its axis, turned by the head's yaw;
- * \`lean\` is how its slice bows, so the slice bends as it turns.
+ * A point of the head \`z\` in front of its axis, turned with the head about
+ * the top of the neck: yaw, then pitch. \`lean\` is how its slice bows to the
+ * camera, so the slices bend as the head turns. A point of the outline
+ * (\`outline\` 1) keeps to it as the head turns about its own axis.
+ * Returns where it lands; how far in front of the axis it is now; and how
+ * much it faces the camera, below 0 when it has gone round the back.
  */
-vec2 turnHead(vec2 p, float z, float lean) {
-  float s = sin(u_head.x);
-  float c = cos(u_head.x);
-  return vec2(p.x * c + z * s, p.y + lean * (z * c - p.x * s - z));
+vec4 turnHead(vec2 p, float z, float lean, float outline) {
+  vec3 q = vec3(p.x, p.y - lean * z - PIVOT.y, z);
+  float sy = sin(u_head.x);
+  float cy = cos(u_head.x);
+  q = mix(vec3(q.x * cy + q.z * sy, q.y, q.z * cy - q.x * sy), q, outline);
+  float facing = q.z;
+  float above = q.y + PIVOT.y - HEAD.y;
+  float sp = sin(u_head.y);
+  float cp = cos(u_head.y);
+  q = vec3(q.x, q.y * cp + q.z * sp, q.z * cp - q.y * sp);
+  facing = facing * cp - above * TIP * sp;
+  vec2 s = vec2(q.x, PIVOT.y + q.y + lean * q.z);
+  // What comes nearer looks a little bigger.
+  s = HEAD + (s - HEAD) * (1.0 + NEAR * (q.z - z));
+  return vec4(s, q.z, facing);
 }
 
 /** The head's roll about the top of the neck and its sway, \`w\` of it. */
 vec2 swayHead(vec2 p, float w) {
-  float a = u_head.y * w;
+  float a = u_head.z * w;
   vec2 d = p - PIVOT;
-  return PIVOT + vec2(d.x * cos(a) - d.y * sin(a), d.x * sin(a) + d.y * cos(a)) + u_head.zw * w;
+  return PIVOT + vec2(d.x * cos(a) - d.y * sin(a), d.x * sin(a) + d.y * cos(a)) + u_sway.xy * w;
+}
+
+/** A head point posed: where it lands, how far in front it is now, how much it faces the camera. */
+vec4 poseHeadPoint(vec2 p, float z, float lean, float outline) {
+  vec4 t = turnHead(p, z, lean, outline);
+  return vec4(swayHead(t.xy, 1.0), t.zw);
 }
 
 vec2 poseHead(vec2 p, float z, float lean) {
-  return swayHead(turnHead(p, z, lean), 1.0);
+  return poseHeadPoint(p, z, lean, 0.0).xy;
 }
 
 /** Where the core's fire burns now. */
@@ -98,17 +131,27 @@ export const HEAD_KINDS = `
     alpha = pow(1.0 - a_p.y, 1.3) * (0.35 + 0.65 * o.z) * smoothstep(0.05, 0.5, u_think) * 1.6;
     size *= 0.7 + 0.5 * o.z;`
 
-// The same pose and orbits in JS, once a frame. `pose` is [yaw, roll, dx, dy].
+// The same pose and orbits in JS, once a frame, for points not on a slice
+// (no lean) and off the outline. `pose` is { head: [yaw, pitch, roll, breath],
+// sway: [dx, dy, ...] }.
 
-const turnHead = (pose, x, y, z) => [x * Math.cos(pose[0]) + z * Math.sin(pose[0]), y]
+const turnHead = ({ head: [yaw, pitch] }, x, y, z) => {
+  const x1 = x * Math.cos(yaw) + z * Math.sin(yaw)
+  const z1 = z * Math.cos(yaw) - x * Math.sin(yaw)
+  const y1 = y - PIVOT[1]
+  const y2 = y1 * Math.cos(pitch) + z1 * Math.sin(pitch)
+  const z2 = z1 * Math.cos(pitch) - y1 * Math.sin(pitch)
+  const near = 1 + NEAR * (z2 - z)
+  return [HEAD[0] + (x1 - HEAD[0]) * near, HEAD[1] + (PIVOT[1] + y2 - HEAD[1]) * near]
+}
 
-const swayHead = (pose, [x, y], w) => {
-  const a = pose[1] * w
+const swayHead = ({ head, sway }, [x, y], w) => {
+  const a = head[2] * w
   const dx = x - PIVOT[0]
   const dy = y - PIVOT[1]
   return [
-    PIVOT[0] + dx * Math.cos(a) - dy * Math.sin(a) + pose[2] * w,
-    PIVOT[1] + dx * Math.sin(a) + dy * Math.cos(a) + pose[3] * w,
+    PIVOT[0] + dx * Math.cos(a) - dy * Math.sin(a) + sway[0] * w,
+    PIVOT[1] + dx * Math.sin(a) + dy * Math.cos(a) + sway[1] * w,
   ]
 }
 

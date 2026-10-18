@@ -1,18 +1,148 @@
-// What keeps the robot alive between and during its words, per frame: the
-// head's idle sway, when it started and stopped talking (for the flash and
-// the ebb), the microphone that lets the rings hear the person, and the
-// fakes the demo modes show.
+// What keeps the robot alive between and during its words, per frame: where
+// its head looks and how its shoulders follow, its breath, when it started
+// and stopped talking (for the flash and the ebb), the microphone that lets
+// the rings hear the person, and the fakes the demo modes show.
+
+import { random } from './kinds.js'
+
+/** How a neck turns the head to a new place: quick to start, easing in, no bounce to speak of. */
+const NECK = { omega: 3.4, damping: 0.86 }
+/** A nod with the words: quicker, a little springy. */
+const NOD = { omega: 7, damping: 0.65 }
+/** The shoulders come round after the head, slowly. */
+const SHOULDERS = { omega: 1.6, damping: 1 }
+/** Seconds a breath takes, and the share of it spent breathing in. */
+const BREATH_SECONDS = 4.4
+const INHALE = 0.38
+/** Every so many breaths one is a sigh: deeper and slower. */
+const SIGH_EVERY = [6, 11]
+
+const between = (rnd, a, b) => a + (b - a) * rnd()
+const either = rnd => (rnd() < 0.5 ? -1 : 1)
+const ease = x => 0.5 - 0.5 * Math.cos(Math.PI * Math.min(1, Math.max(0, x)))
+
+/** One step of a damped spring towards `target`: a new { x, v }. */
+const spring = (s, target, dt, { omega, damping }) => {
+  const v = s.v + (omega * omega * (target - s.x) - 2 * damping * omega * s.v) * dt
+  return { x: s.x + v * dt, v }
+}
 
 /**
- * The head's idle sway at `t` seconds: [yaw, roll, dx, dy]. Sums of slow
- * sines that never quite repeat, as a man's head moves standing still.
+ * Where the head looks next and for how long, in radians and seconds, by
+ * what the robot is doing. Yaw is to its left, pitch up, roll to its left.
  */
-export function headPose(t) {
-  const yaw = 0.085 * Math.sin(t * 0.21) + 0.035 * Math.sin(t * 0.57 + 1.3)
-  const roll = 0.011 * Math.sin(t * 0.29 + 0.7) + 0.005 * Math.sin(t * 0.77 + 2.1)
-  const dx = 0.0028 * Math.sin(t * 0.25 + 0.4)
-  const dy = 0.002 * Math.sin(t * 0.9 - 0.6)
-  return [yaw, roll, dx, dy]
+function nextGlance(rnd, mood) {
+  if (mood === 'think') {
+    // Thinking: up and away, the gaze wandering from place to place.
+    return {
+      yaw: either(rnd) * between(rnd, 0.12, 0.3),
+      pitch: between(rnd, 0.07, 0.15),
+      roll: between(rnd, -0.04, 0.04),
+      hold: between(rnd, 1.4, 3.2),
+    }
+  }
+  if (mood === 'speak') {
+    // Speaking: at the person, shifting a little with the thought.
+    return {
+      yaw: between(rnd, -0.12, 0.12),
+      pitch: between(rnd, -0.03, 0.04),
+      roll: between(rnd, -0.03, 0.03),
+      hold: between(rnd, 1.8, 3.8),
+    }
+  }
+  // Listening: now and then a look aside...
+  if (rnd() < 0.22) {
+    return {
+      yaw: either(rnd) * between(rnd, 0.18, 0.3),
+      pitch: between(rnd, -0.05, 0.06),
+      roll: between(rnd, -0.02, 0.02),
+      hold: between(rnd, 1.2, 2.4),
+    }
+  }
+  // ...but mostly at the person, the head a little to one side.
+  return {
+    yaw: between(rnd, -0.08, 0.08),
+    pitch: between(rnd, -0.05, 0.01),
+    roll: either(rnd) * between(rnd, 0.015, 0.06),
+    hold: between(rnd, 3, 6.5),
+  }
+}
+
+const moodOf = ({ think, speak }) => (think > 0.5 ? 'think' : speak > 0.5 ? 'speak' : 'listen')
+
+/** How full the chest is at `phase` of a breath, 0 empty to 1 full: in quickly, out slowly. */
+const lungs = phase => (phase < INHALE ? ease(phase / INHALE) : 1 - ease((phase - INHALE) / (1 - INHALE)))
+
+/**
+ * The robot's living motion, frame by frame. The head glances about: it
+ * holds a while, then turns to a new place as a neck turns it, and where it
+ * looks depends on what the robot is doing. Listening it faces the person
+ * with its head a little to one side, thinking it looks up and away,
+ * speaking it looks ahead and nods with its words. The shoulders come round
+ * after the head and shift their weight; the chest breathes, now and then
+ * with a sigh. Slow sines under it all keep it from ever standing still.
+ *
+ * `life(t, dt, { think, speak, level })`, each 0 to 1, returns
+ * { head: [yaw, pitch, roll, breath], sway: [dx, dy, shoulder yaw, shoulder roll] };
+ * breath is 0 to 1, up to 2 in a sigh. The same seed moves the same way.
+ */
+export function createLife(seed = 7) {
+  const rnd = random(seed)
+  let state = {
+    yaw: { x: 0, v: 0 },
+    pitch: { x: 0, v: 0 },
+    roll: { x: 0, v: 0 },
+    nod: { x: 0, v: 0 },
+    shoulders: { x: 0, v: 0 },
+    glance: { yaw: 0, pitch: 0, roll: 0, hold: 1 },
+    until: 0.6,
+    mood: 'listen',
+    phase: 0.6,
+    sigh: false,
+    sighIn: Math.round(between(rnd, 2, 4)),
+  }
+
+  return (t, dt, input) => {
+    const mood = moodOf(input)
+    let { glance, until, phase, sigh, sighIn } = state
+    // A change of what it is doing turns the head soon, not when the glance runs out.
+    if (mood !== state.mood) until = Math.min(until, t + between(rnd, 0.15, 0.5))
+    if (t >= until) {
+      glance = nextGlance(rnd, mood)
+      until = t + glance.hold
+    }
+
+    phase += dt / (BREATH_SECONDS * (sigh ? 1.6 : 1))
+    if (phase >= 1) {
+      phase -= 1
+      sighIn -= 1
+      sigh = sighIn <= 0
+      if (sigh) sighIn = Math.round(between(rnd, ...SIGH_EVERY))
+    }
+    const breath = lungs(phase) * (sigh ? 2 : 1)
+
+    const nod = spring(state.nod, -0.05 * input.level * input.speak, dt, NOD)
+    const yaw = spring(state.yaw, glance.yaw, dt, NECK)
+    const pitch = spring(state.pitch, glance.pitch, dt, NECK)
+    const roll = spring(state.roll, glance.roll, dt, NECK)
+    const shoulders = spring(state.shoulders, 0.35 * yaw.x, dt, SHOULDERS)
+    state = { yaw, pitch, roll, nod, shoulders, glance, until, mood, phase, sigh, sighIn }
+
+    // Breathing in, the head rises a little and tips back.
+    const head = [
+      yaw.x + 0.022 * Math.sin(t * 0.37 + 1.3) + 0.012 * Math.sin(t * 0.83),
+      pitch.x + nod.x + 0.012 * Math.sin(t * 0.29 + 0.4) + 0.012 * breath,
+      roll.x + 0.008 * Math.sin(t * 0.31 + 0.7) + 0.004 * Math.sin(t * 0.77 + 2.1),
+      breath,
+    ]
+    const sway = [
+      0.0028 * Math.sin(t * 0.25 + 0.4),
+      0.0015 * Math.sin(t * 0.9 - 0.6) + 0.0035 * breath,
+      shoulders.x,
+      0.3 * roll.x + 0.01 * Math.sin(t * 0.17 + 2.4),
+    ]
+    return { head, sway }
+  }
 }
 
 /**
@@ -35,6 +165,15 @@ export function createTalk(hold = 0.6) {
     return { talking, onset: t - started, offset: t - stopped }
   }
 }
+
+/** One swell of a beat `s` seconds after it, rising fast and dying away: 0 to 1, 1 at its top. */
+const swell = s => (s > 0 ? (s / 0.06) * Math.exp(1 - s / 0.06) : 0)
+
+/**
+ * How full the heart's glow is `since` seconds after the monitor's last
+ * beat, 0 to 1: the first sound of the beat, then a smaller second one.
+ */
+export const pulseAt = since => Math.min(1, swell(since) + 0.55 * swell(since - 0.24))
 
 /** A made-up voice of the person for the demos: phrases with pauses, 0 to 1. */
 export const fakeVoice = t => {
