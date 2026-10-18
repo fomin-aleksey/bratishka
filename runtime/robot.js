@@ -98,18 +98,20 @@ const vec3 HOT = ${glsl(P.hot)};
 float hash(float n) { return fract(sin(n) * 43758.5453); }
 
 /**
- * How hot the face's inner light is at p: the core's fire, dimmer while it
- * thinks, when the sparks it splits into light the slices round them.
+ * How hot the face's inner light is at p: x from the core's fire, dimmer
+ * while it thinks; y from the sparks it splits into then, lighting the
+ * slices round them in their color.
  */
-float heat(vec2 p) {
-  float h = clamp(1.0 - length((p - coreNow()) / vec2(0.2, 0.19)), 0.0, 1.0) * (1.0 - 0.6 * u_think);
+vec2 heat(vec2 p) {
+  float core = clamp(1.0 - length((p - coreNow()) / vec2(0.2, 0.19)), 0.0, 1.0) * (1.0 - 0.6 * u_think);
+  float sparks = 0.0;
   if (u_think > 0.002) {
     for (int i = 0; i < 4; i++) {
       vec3 o = u_orbits[i];
-      h = max(h, clamp(1.0 - length(p - o.xy) / 0.07, 0.0, 1.0) * (0.55 + 0.45 * o.z) * u_think);
+      sparks = max(sparks, clamp(1.0 - length(p - o.xy) / 0.07, 0.0, 1.0) * (0.55 + 0.45 * o.z) * u_think);
     }
   }
-  return h;
+  return vec2(core, sparks);
 }
 
 /**
@@ -169,7 +171,8 @@ void main() {
     // Round the back it is hidden; brought nearer, a little bigger and brighter.
     float shown = mix(smoothstep(-0.012, 0.0, posed.w), 1.0, outline);
     float nearer = posed.z - a_p.z;
-    float h = heat(pos);
+    vec2 heats = heat(pos);
+    float h = max(heats.x, heats.y);
     float rim = smoothstep(0.9, 1.0, edge);
     col = mix(DIM, MAIN, 0.35 + 0.65 * edge);
     col = mix(col, PALE, rim * 0.15);
@@ -177,6 +180,9 @@ void main() {
     col = mix(col, mix(GLOW, ACCENT, 0.25 + 0.5 * h), warm * (1.0 - rim));
     float hot = smoothstep(0.45, 1.0, h) * (0.45 + 1.2 * clamp(lv * 1.6, 0.0, 1.0) + 0.9 * u_think);
     col = mix(col, HOT, clamp(hot, 0.0, 1.0) * (1.0 - rim));
+    // Where the sparks outshine the core, the slices take the sparks' color.
+    float sparkLit = smoothstep(0.05, 0.5, heats.y) * heats.y / (heats.x + heats.y + 0.001);
+    col = mix(col, mix(u_tint, PALE, 0.2), sparkLit * (1.0 - rim) * 0.9);
     col = mix(col, PALE, temple * 0.4);
     alpha = mix(0.5, 1.0, edge) * (0.85 + 0.15 * sin(u * 5.0 - u_time * 1.2 + v * 11.0));
     alpha += h * (1.15 + 1.1 * lv + 0.6 * u_think);
@@ -418,7 +424,7 @@ void main() {
       vec3 s = u_orbits[i];
       float sd = dot(w - s.xy, w - s.xy);
       float near = u_think * (0.35 + 0.65 * s.z) * shown;
-      bg += ${glsl(P.glow)} * exp(-sd / 0.0012) * near * 0.8 + ${glsl(P.hot, 0.9)} * exp(-sd / 0.00012) * near * 0.6;
+      bg += u_tint * exp(-sd / 0.0012) * near * 0.8 + mix(u_tint, vec3(1.0), 0.5) * exp(-sd / 0.00012) * near * 0.6;
     }
   }
 
@@ -507,7 +513,8 @@ const revealAt = build => (build < 1 ? 0 : build >= 1 + REVEAL ? 99 : ((build - 
  * Draws the robot into `canvas`. `frame(state)` renders one frame:
  * { time, flow, level, speak, think, listen, build, centerPx, freePx } and
  * the head's { head, sway, onset, offset, mic, ear } (see alive.js) and
- * how long ago the heart beat, { sinceBeat }.
+ * how long ago the heart beat, { sinceBeat }, and the color of what it is
+ * doing for the sparks it thinks with, { tint } (0 to 1 rgb).
  * `build` runs from 0 to 1 over the intro and stays past 1 after it.
  */
 export function createRobot(canvas) {
@@ -685,6 +692,7 @@ export function createRobot(canvas) {
     gl.uniform4fv(u.u_head, state.head)
     gl.uniform4fv(u.u_sway, state.sway)
     gl.uniform4fv(u.u_heart, heart)
+    gl.uniform3fv(u.u_tint, state.tint)
     gl.uniform2fv(u.u_core, head.core)
     gl.uniform2fv(u.u_crown, head.crown)
     gl.uniform3fv(u['u_orbits[0]'], head.orbits)
@@ -720,6 +728,7 @@ export function createRobot(canvas) {
       gl.uniform4fv(cu.u_head, state.head)
       gl.uniform4fv(cu.u_sway, state.sway)
       gl.uniform4fv(cu.u_heart, heart)
+      gl.uniform3fv(cu.u_tint, state.tint)
       bindTex(3, glyphs, cu.u_glyphs)
       bindTex(4, shape, cu.u_shape)
       gl.uniform2f(cu.u_res, canvas.width, canvas.height)

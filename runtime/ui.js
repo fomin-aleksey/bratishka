@@ -5,7 +5,7 @@ import { DEMO_VITALS, createLife, createMic, createTalk, demoCalls, demoCycle, f
 import { createMonitor, monitorState } from './monitor.js'
 import { createRobot } from './robot.js'
 import { VOICES, createVoiceFx } from './voicefx.js'
-import { WORDS, assembling, createStatus } from './status.js'
+import { COLORS, WORDS, assembling, createStatus } from './status.js'
 
 const $ = id => document.getElementById(id)
 
@@ -649,6 +649,10 @@ let introStart = skipIntro ? -1e9 : performance.now()
 const introBuild = now => (now - introStart) / 1000 / INTRO_SECONDS
 
 const talk = createTalk()
+/** A #rrggbb color as 0 to 1 rgb. */
+const rgbOf = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+/** The sparks' color, gliding to the color of each new state. */
+let tint = rgbOf(COLORS.think)
 const life = createLife()
 const monitor = createMonitor($('monitor'))
 const status = createStatus({
@@ -763,6 +767,8 @@ function tick(now) {
   // The monitor keeps the heartbeat: the heart in the chest beats with it.
   const vital = monitor.frame(dt, { state, level: motion.level, mic: motion.mic * motion.listen })
   const { sinceBeat } = vital
+  const glide = 1 - Math.exp(-4 * dt)
+  tint = rgbOf(COLORS[state]).map((want, i) => tint[i] + (want - tint[i]) * glide)
   const view = robot.frame({
     time: now / 1000,
     flow: motion.flow,
@@ -780,6 +786,7 @@ function tick(now) {
     mic: motion.mic * motion.listen,
     ear: motion.ear,
     sinceBeat,
+    tint,
   })
   followSubtitle()
   // The status beside the head, its line to the temple, beating with the heart.

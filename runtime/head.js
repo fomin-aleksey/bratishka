@@ -42,6 +42,8 @@ uniform vec4 u_sway;
 uniform vec2 u_core;
 uniform vec2 u_crown;
 uniform vec3 u_orbits[${ORBITS}];
+// The color of what the robot is doing (status.js): the sparks it thinks with take it.
+uniform vec3 u_tint;
 const vec2 PIVOT = vec2(${f(PIVOT[0])}, ${f(PIVOT[1])});
 const float CORE_DEPTH = ${f(CORE_DEPTH)};
 const float NEAR = ${f(NEAR)};
@@ -124,10 +126,11 @@ vec3 orbitAt(int i, float t, float think) {
 export const HEAD_KINDS = `
   } else if (kind == ${KIND.orbit}) {
     // A spark of the core split while thinking, circling inside the head,
-    // its trail behind it; dimmer on the far side of its orbit.
+    // its trail behind it; dimmer on the far side of its orbit. In the color
+    // of what the robot is doing, white-hot at the spark itself.
     vec3 o = orbitAt(int(a_p.x + 0.5), u_time - a_p.y * 1.0, u_think);
     pos = o.xy + a_p.zw * 0.0025 * (0.3 + a_p.y);
-    col = mix(HOT, mix(ACCENT, GLOW, 0.5), smoothstep(0.0, 0.6, a_p.y));
+    col = mix(mix(u_tint, vec3(1.0), 0.55), u_tint, smoothstep(0.0, 0.6, a_p.y));
     alpha = pow(1.0 - a_p.y, 1.3) * (0.35 + 0.65 * o.z) * smoothstep(0.05, 0.5, u_think) * 1.6;
     size *= 0.7 + 0.5 * o.z;`
 
