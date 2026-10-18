@@ -15,7 +15,7 @@ export const KIND = {
 
 export const HEAD = [0, 0.31]
 /** Where the heart beats, a little to the robot's left, and where the orb of the intro shines. */
-export const HEART = [0.05, -0.28]
+export const HEART = [0.05, -0.36]
 /** The world height the camera looks at: the bust fills the window down to the chest. */
 export const CAM_Y = 0.2
 /** Where the bust ends: the body fades out below the middle of the chest. */

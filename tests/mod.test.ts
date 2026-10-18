@@ -170,7 +170,7 @@ const USAGE = {
   startedAt: 0,
   context: { window: 200000, tokens: 76000, percent: 38 },
   rateLimits: [
-    { kind: 'five_hour', percentUsed: 34 },
+    { kind: 'five_hour', percentUsed: 34, resetsAt: '2026-10-18T20:00:00Z' },
     { kind: 'seven_day', percentUsed: 12.5 },
   ],
   cost: { usd: 3.42 },
@@ -407,9 +407,11 @@ test('the session\'s figures reach the monitor when the engine measures them', a
       path: '/api/vitals',
       body: {
         context: 38,
+        tokens: 76000,
+        window: 200000,
         limits: [
-          { kind: 'five_hour', used: 34 },
-          { kind: 'seven_day', used: 12.5 },
+          { kind: 'five_hour', used: 34, resets: 1792353600 },
+          { kind: 'seven_day', used: 12.5, resets: null },
         ],
         usd: 3.42,
         ageMs: expect.any(Number),

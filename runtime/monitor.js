@@ -2,19 +2,20 @@
 // a patient's. A cardiogram sweeps across in the color of what it is doing
 // and beats at that pace; every tool call is a tall spike, a failed one a red
 // one and an arrhythmia. Below it the session's figures as a body's: oxygen
-// for the context still free, blood pressure for the rate limits, and a feed
-// of what it is doing.
+// for the context still free (and its tokens), blood pressure for the rate
+// limits (and when they reset), the calls of the last ten minutes as bars,
+// and a feed of what it is doing, each call with how long it took.
 
-import { WORDS } from './status.js'
+import { COLORS, WORDS } from './status.js'
 
-/** What it is doing, by the trace's color and its resting pulse; its word is in status.js. */
+/** What it is doing: the trace's color (shared with the status) and its resting pulse; its word is in status.js. */
 const STATES = {
-  listen: { color: '#5BB8FF', bpm: 62 },
-  think: { color: '#2EE58F', bpm: 88 },
-  speak: { color: '#F2F2F0', bpm: 100 },
-  tools: { color: '#FFB21E', bpm: 116 },
-  agents: { color: '#FF7A2E', bpm: 124 },
-  fail: { color: '#FF3D5A', bpm: 138 },
+  listen: { color: COLORS.listen, bpm: 62 },
+  think: { color: COLORS.think, bpm: 88 },
+  speak: { color: COLORS.speak, bpm: 100 },
+  tools: { color: COLORS.tools, bpm: 116 },
+  agents: { color: COLORS.agents, bpm: 124 },
+  fail: { color: COLORS.fail, bpm: 138 },
 }
 const AMBER = '#FFB21E'
 const RED = '#FF3D5A'
@@ -24,7 +25,10 @@ const WHITE = '#F2F2F0'
 const SWEEP = 84
 const GAP = 16
 /** How many calls the feed shows. */
-const FEED = 5
+const FEED = 7
+/** The activity chart: how far back it looks and how wide each bar is, in seconds. */
+const ACTIVITY_SECONDS = 600
+const BUCKET_SECONDS = 30
 
 /** What a call does, in the first person. */
 const DOING = {
@@ -75,6 +79,31 @@ const timeOf = at => {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
+/** How long a call took, briefly: 0.4 с, 12 с, 2 мин. */
+const tookOf = seconds => {
+  if (seconds < 10) return `${Math.max(0, seconds).toFixed(1)} с`
+  if (seconds < 120) return `${Math.round(seconds)} с`
+  return `${Math.round(seconds / 60)} мин`
+}
+
+/** A count of tokens, briefly: 840, 76k, 1.2M. */
+const tokensOf = n => {
+  if (n >= 1e6) return `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M`
+  if (n >= 1e3) return `${Math.round(n / 1e3)}k`
+  return String(Math.round(n))
+}
+
+/** How long until a limit resets, `seconds` from now: 12 мин, 2 ч 14 мин, 3 дн 4 ч. */
+const untilOf = seconds => {
+  const s = Math.max(0, Math.round(seconds))
+  const days = Math.floor(s / 86400)
+  const hours = Math.floor((s % 86400) / 3600)
+  const minutes = Math.floor((s % 3600) / 60)
+  if (days) return `сброс через ${days} дн ${hours} ч`
+  if (hours) return `сброс через ${hours} ч ${minutes} мин`
+  return `сброс через ${minutes} мин`
+}
+
 /** A model's id as a name: claude-opus-5-5 as OPUS 5.5. */
 export const modelName = id => {
   const parts = String(id || '').replace(/^claude-/, '').replace(/\[.*\]$/, '').split('-')
@@ -87,9 +116,10 @@ export const modelName = id => {
 const tone = (value, warn, alarm) => (value >= alarm ? RED : value >= warn ? AMBER : WHITE)
 
 /**
- * The monitor in `root`, drawn into its canvas. `frame(dt, { state, level,
+ * The monitor in `root`, drawn into its canvases. `frame(dt, { state, level,
  * mic })` advances the trace and answers how long ago the heart last beat (it
- * beats on while the monitor is folded away); `vitals(figures)` and
+ * beats on while the monitor is folded away), its pulse, how many calls run,
+ * the latest call and how full the context is; `vitals(figures)` and
  * `action(call)` take what the server sends.
  */
 export function createMonitor(root) {
@@ -103,6 +133,14 @@ export function createMonitor(root) {
   let vitalsAt = 0
   let actions = []
   let shownFeed = null
+  // Since the window opened: when each call started, how many there were and failed.
+  let starts = []
+  let calls = 0
+  let fails = 0
+  let drawnActivity = ''
+  // What it is doing and since when, in seconds of the trace's clock.
+  let state = 'listen'
+  let stateSince = 0
 
   const fit = () => {
     const dpr = window.devicePixelRatio || 1
@@ -233,7 +271,9 @@ export function createMonitor(root) {
     if (!vitals) return
     text('model', modelName(vitals.model))
     text('cost', vitals.usd === null ? '—' : `$${vitals.usd.toFixed(2)}`)
-    // Oxygen: the share of the context still free.
+    const hours = ((vitals.ageMs ?? 0) + (Date.now() - vitalsAt)) / 3_600_000
+    text('rate', vitals.usd === null || hours < 0.05 ? '' : ` · $${(vitals.usd / hours).toFixed(2)}/ч`)
+    // Oxygen: the share of the context still free, and its tokens.
     const free = vitals.context === null ? null : Math.max(0, 100 - vitals.context)
     text('oxygen', free === null ? '—' : `${Math.round(free)}%`)
     const oxygenTone = free === null ? WHITE : tone(100 - free, 65, 88)
@@ -241,22 +281,63 @@ export function createMonitor(root) {
     const bar = $('oxygenBar')
     bar.style.width = `${free ?? 0}%`
     bar.style.background = oxygenTone
+    text('tokens', vitals.tokens == null || !vitals.window ? '' : `${tokensOf(vitals.tokens)} из ${tokensOf(vitals.window)} токенов`)
     // Blood pressure: how much of the five-hour and the week's limits is
-    // used, in percent, each in its own color.
+    // used, in percent, each in its own color, and when each resets.
     for (const [name, kind] of [
       ['five', 'five_hour'],
       ['week', 'seven_day'],
     ]) {
-      const used = vitals.limits.find(one => one.kind === kind)?.used
+      const limit = vitals.limits.find(one => one.kind === kind)
+      const used = limit?.used
+      const color = used === undefined ? WHITE : tone(used, 60, 85)
       text(name, used === undefined ? '—' : `${Math.round(used)}%`)
-      paint(name, used === undefined ? WHITE : tone(used, 60, 85))
+      paint(name, color)
+      const fill = $(`${name}Bar`)
+      fill.style.width = `${used ?? 0}%`
+      fill.style.background = color
+      text(`${name}Reset`, limit?.resets ? untilOf(limit.resets - Date.now() / 1000) : '')
     }
     text('pressureNote', vitals.limits.length ? 'израсходовано' : 'лимитов нет')
   }
 
+  /** The calls of the last ten minutes, a bar each half minute; redrawn when a bar changes. */
+  const activity = () => {
+    const canvas = $('activity')
+    const now = Date.now() / 1000
+    const bars = ACTIVITY_SECONDS / BUCKET_SECONDS
+    const counts = new Array(bars).fill(0)
+    for (const at of starts) {
+      const k = Math.floor((now - at) / BUCKET_SECONDS)
+      if (k >= 0 && k < bars) counts[bars - 1 - k] += 1
+    }
+    const width = Math.round(canvas.clientWidth)
+    const height = Math.round(canvas.clientHeight)
+    const key = `${counts.join(',')}|${width}x${height}|${state}`
+    if (key === drawnActivity || !width || !height) return
+    drawnActivity = key
+    const dpr = window.devicePixelRatio || 1
+    canvas.width = Math.round(width * dpr)
+    canvas.height = Math.round(height * dpr)
+    const ctx = canvas.getContext('2d')
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, width, height)
+    const top = Math.max(4, ...counts)
+    const slot = width / bars
+    counts.forEach((count, i) => {
+      const h = count ? Math.max(2, (count / top) * (height - 2)) : 1
+      ctx.globalAlpha = count ? 0.35 + 0.65 * (i / bars) : 0.15
+      ctx.fillStyle = count ? STATES[state].color : '#E8ECF6'
+      ctx.fillRect(i * slot + 1, height - h, Math.max(1, slot - 2), h)
+    })
+    ctx.globalAlpha = 1
+  }
+
   const feed = () => {
     const rows = actions.slice(-FEED).reverse()
-    const key = rows.map(one => `${one.id}:${one.state}`).join('|')
+    const now = Date.now() / 1000
+    const took = one => tookOf((one.state === 'run' ? now : (one.doneAt ?? one.at)) - one.at)
+    const key = rows.map(one => `${one.id}:${one.state}:${one.state === 'run' ? Math.floor(now - one.at) : ''}`).join('|')
     if (key === shownFeed) return
     shownFeed = key
     const list = $('feed')
@@ -274,7 +355,8 @@ export function createMonitor(root) {
         detail.textContent = one.detail
         const at = document.createElement('span')
         at.className = 'm-at'
-        at.textContent = timeOf(one.at)
+        at.textContent = one.doneAt || one.state === 'run' ? took(one) : timeOf(one.at)
+        at.title = timeOf(one.at)
         row.append(dot, what, at, detail)
         return row
       }),
@@ -289,15 +371,30 @@ export function createMonitor(root) {
 
   return {
     frame(dt, signs) {
+      if (signs.state !== state) {
+        state = signs.state
+        stateSince = trace.time
+      }
+      // What the status beside the head tells of it too.
+      const running = actions.filter(one => one.state === 'run')
+      const latest = actions[actions.length - 1]
+      const facts = {
+        sinceBeat: trace.time - heart.lastBeat,
+        bpm: heart.shown,
+        running: running.length,
+        doing: latest ? `${latest.tool} ${latest.detail}`.trim() : '',
+        context: vitals?.context == null ? null : Math.round(vitals.context),
+      }
       if (root.hidden) {
         trace.time += dt
         sample(dt, signs)
-        return { sinceBeat: trace.time - heart.lastBeat }
+        return { ...facts, sinceBeat: trace.time - heart.lastBeat }
       }
       advance(dt, signs)
       draw()
       const s = STATES[signs.state]
       text('state', WORDS[signs.state])
+      text('stateFor', clock(trace.time - stateSince).replace(/^0:/, ''))
       paint('state', s.color)
       paint('stateDot', s.color)
       if ($('stateDot').style.background !== s.color) $('stateDot').style.background = s.color
@@ -308,7 +405,12 @@ export function createMonitor(root) {
       paint('heart', s.color)
       figures()
       feed()
-      return { sinceBeat: trace.time - heart.lastBeat }
+      activity()
+      text('calls', String(calls))
+      text('fails', String(fails))
+      paint('fails', fails ? RED : WHITE)
+      text('running', String(running.length))
+      return { ...facts, sinceBeat: trace.time - heart.lastBeat }
     },
     vitals(next) {
       if (!next) return
@@ -318,14 +420,22 @@ export function createMonitor(root) {
     action(call) {
       const known = actions.some(one => one.id === call.id)
       actions = known
-        ? actions.map(one => (one.id === call.id ? { ...one, state: call.state } : one))
+        ? actions.map(one => (one.id === call.id ? { ...one, state: call.state, doneAt: call.at } : one))
         : [...actions, call].slice(-12)
+      if (!known) {
+        starts = [...starts.filter(at => call.at - at < ACTIVITY_SECONDS), call.at]
+        calls += 1
+      }
+      if (call.state === 'fail') fails += 1
       // A call shows on the trace as it starts; a failure once more as it ends.
       if (call.state === 'run' || call.state === 'fail') spikes.push({ at: trace.time, failed: call.state === 'fail' })
     },
     /** The feed as a reloaded window finds it: no spikes for calls long done. */
     load(list) {
       actions = Array.isArray(list) ? list.slice(-12) : []
+      starts = actions.map(one => one.at)
+      calls = actions.length
+      fails = actions.filter(one => one.state === 'fail').length
     },
     actions: () => actions,
   }

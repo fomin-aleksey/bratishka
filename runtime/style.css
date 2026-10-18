@@ -17,6 +17,14 @@
   font-display: swap;
 }
 
+/* What the robot is doing, as a color (status.js sets it): registered, so a
+   change glides instead of jumping. */
+@property --state {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #e8ecf6;
+}
+
 :root {
   /* White with red, as palette.js paints the robot. */
   --accent-rgb: 232, 236, 246;
@@ -31,11 +39,11 @@
   --accent: rgb(var(--accent-rgb));
   --signal: rgb(var(--signal-rgb));
   --hot: #ff9aa2;
-  /* The status beside the head and in the corner. */
-  --status: #ff8a2a;
-  --status-rgb: 255 138 42;
+  /* The status beside the head and in the corner: the state's color. */
+  --state: #e8ecf6;
+  transition: --state 0.6s ease;
   --panel-w: clamp(360px, 30vw, 640px);
-  --monitor-w: 300px;
+  --monitor-w: clamp(340px, 24vw, 460px);
   --mono: "Feature Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --caps: "Next Art", "Feature Mono", ui-sans-serif, sans-serif;
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
@@ -100,10 +108,10 @@ button { font: inherit; color: inherit; }
   display: flex;
   align-items: center;
   gap: 10px;
-  color: var(--status);
-  text-shadow: 0 0 8px rgb(var(--status-rgb) / 0.5);
+  color: var(--state);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--state) 50%, transparent);
 }
-.status-line .dot { background: var(--status); box-shadow: 0 0 10px var(--status); will-change: transform; }
+.status-line .dot { background: var(--state); box-shadow: 0 0 10px var(--state); will-change: transform; }
 
 .dot {
   width: 8px;
@@ -115,53 +123,87 @@ button { font: inherit; color: inherit; }
 
 @keyframes pulse { 50% { opacity: 0.25; } }
 
-/* The status beside the head: a caption, the word with a dot that beats
-   with the monitor's heart, and a leader line to the temple. What beats
-   changes only opacity and transform, so nothing is painted anew. */
+/* The status beside the head: a panel in the state's color with corner
+   brackets, a caption, the word with a dot that beats with the monitor's
+   heart, lines of code under it and a faint rain of glyphs behind; a leader
+   line to the temple. What beats changes only opacity and transform, so
+   nothing is painted anew. */
 .head-label {
   position: fixed;
   left: 0;
   top: 0;
   display: grid;
-  gap: 5px;
+  gap: 8px;
+  min-width: 280px;
+  padding: 12px 18px 14px 16px;
   white-space: nowrap;
   pointer-events: none;
   will-change: transform;
   font-family: var(--mono);
+  background: rgba(4, 6, 8, 0.55);
+  border: 1px solid color-mix(in srgb, var(--state) 22%, transparent);
+  overflow: hidden;
 }
-.hl-caption { font-size: 10px; letter-spacing: 0.32em; color: rgb(var(--status-rgb) / 0.6); }
+/* Corner brackets, top left and bottom right. */
+.head-label::before,
+.head-label::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--state);
+  filter: drop-shadow(0 0 4px var(--state));
+}
+.head-label::before { left: -1px; top: -1px; border-right: 0; border-bottom: 0; }
+.head-label::after { right: -1px; bottom: -1px; border-left: 0; border-top: 0; }
+.hl-rain {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.22;
+  z-index: -1;
+}
+.hl-caption {
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  color: color-mix(in srgb, var(--state) 60%, transparent);
+}
 .hl-word {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 12px 6px 10px;
-  border: 1px solid rgb(var(--status-rgb) / 0.45);
-  border-radius: 6px;
-  background: rgb(var(--status-rgb) / 0.08);
+  gap: 12px;
   font-family: var(--caps);
-  font-size: 15px;
-  letter-spacing: 0.2em;
-  color: var(--status);
-  text-shadow: 0 0 10px rgb(var(--status-rgb) / 0.7);
-  box-shadow: 0 0 12px rgb(var(--status-rgb) / 0.15);
+  font-size: 26px;
+  letter-spacing: 0.18em;
+  color: var(--state);
+  text-shadow: 0 0 14px color-mix(in srgb, var(--state) 70%, transparent);
 }
 .hl-glow {
   position: absolute;
-  inset: -1px;
-  border-radius: 6px;
-  border: 1px solid rgb(var(--status-rgb) / 0.8);
-  box-shadow: 0 0 26px rgb(var(--status-rgb) / 0.45), inset 0 0 14px rgb(var(--status-rgb) / 0.18);
+  inset: -8px -12px;
+  border-radius: 4px;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--state) 22%, transparent), transparent);
   opacity: 0;
   will-change: opacity;
 }
 .hl-dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  background: var(--status);
-  box-shadow: 0 0 10px var(--status);
+  background: var(--state);
+  box-shadow: 0 0 12px var(--state);
   will-change: transform;
+}
+.hl-code {
+  min-height: 4.5em;
+  font-size: 11.5px;
+  line-height: 1.5;
+  letter-spacing: 0.06em;
+  white-space: pre;
+  color: color-mix(in srgb, var(--state) 75%, transparent);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--state) 40%, transparent);
 }
 .head-callout { position: fixed; left: 0; top: 0; width: 0; height: 0; pointer-events: none; }
 .hc-line {
@@ -169,7 +211,7 @@ button { font: inherit; color: inherit; }
   left: 0;
   top: 0;
   height: 1px;
-  background: rgb(var(--status-rgb) / 0.75);
+  background: color-mix(in srgb, var(--state) 75%, transparent);
   transform-origin: 0 50%;
   will-change: transform, opacity;
 }
@@ -180,8 +222,8 @@ button { font: inherit; color: inherit; }
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--status);
-  box-shadow: 0 0 8px var(--status);
+  background: var(--state);
+  box-shadow: 0 0 8px var(--state);
   will-change: transform;
 }
 
@@ -501,15 +543,15 @@ body.calm:not(.panel-open) { cursor: none; }
 .monitor[hidden] { display: none; }
 
 .m-head { display: flex; justify-content: space-between; align-items: baseline; }
-.m-title { font-family: var(--caps); font-size: 12px; letter-spacing: 0.24em; color: var(--text); }
-.m-session { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; color: var(--accent); }
+.m-title { font-family: var(--caps); font-size: 13px; letter-spacing: 0.24em; color: var(--text); }
+.m-session { font-family: var(--mono); font-size: 13px; letter-spacing: 0.08em; color: var(--accent); }
 .m-sub {
   display: flex;
   justify-content: space-between;
   margin-top: -8px;
   font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.14em;
+  font-size: 11px;
+  letter-spacing: 0.12em;
   color: var(--dim);
 }
 
@@ -519,53 +561,60 @@ body.calm:not(.panel-open) { cursor: none; }
   justify-content: space-between;
   align-items: center;
   font-family: var(--caps);
-  font-size: 10px;
+  font-size: 10.5px;
   letter-spacing: 0.22em;
   color: var(--dim);
 }
-.m-bpm { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; color: var(--dim); }
-.m-bpm b { margin: 0 5px 0 6px; font-size: 22px; font-weight: 500; color: var(--text); }
-.m-heart { display: inline-block; font-size: 13px; }
+.m-bpm { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; color: var(--dim); }
+.m-bpm b { margin: 0 6px 0 7px; font-size: 30px; font-weight: 500; color: var(--text); }
+.m-heart { display: inline-block; font-size: 15px; }
 .m-trace {
   display: block;
   width: 100%;
-  height: 92px;
+  height: 128px;
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid rgba(var(--accent-rgb), 0.08);
 }
-.m-state { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em; }
-.m-state-dot { width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 10px currentColor; }
+.m-state { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; letter-spacing: 0.18em; }
+.m-state-dot { width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 10px currentColor; }
+.m-state-for { margin-left: auto; font-size: 11px; letter-spacing: 0.08em; color: var(--dim); }
 
-.m-pair { grid-template-columns: 1fr 1fr; column-gap: 16px; }
-.m-pair > div { display: grid; gap: 6px; align-content: start; }
+.m-line { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .m-value {
   font-family: var(--mono);
-  font-size: 28px;
+  font-size: 30px;
   line-height: 1;
   color: var(--text);
   text-shadow: 0 0 14px rgba(var(--accent-rgb), 0.3);
   transition: color 0.4s;
 }
-.m-limits { display: grid; grid-template-columns: 1fr 1fr; column-gap: 8px; }
-.m-limits > div { display: grid; gap: 4px; }
-.m-limit { font-size: 22px; }
+.m-limit { display: grid; gap: 5px; }
+.m-limit .m-value { font-size: 24px; }
+.m-limit + .m-limit { margin-top: 4px; }
+.m-name { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; color: var(--dim); }
 .m-bar { height: 4px; border-radius: 2px; background: rgba(var(--accent-rgb), 0.12); overflow: hidden; }
 .m-bar span { display: block; width: 0; height: 100%; background: var(--accent); transition: width 0.8s var(--ease), background 0.4s; }
-.m-note { font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; color: var(--dim); }
+.m-note { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; color: var(--dim); }
 
-.m-feed { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.m-row { display: grid; grid-template-columns: 10px 1fr auto; column-gap: 8px; row-gap: 2px; align-items: center; font-size: 12px; }
+.m-activity { display: block; width: 100%; height: 46px; }
+.m-counts { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; color: var(--dim); }
+.m-counts b { margin-left: 5px; font-weight: 500; font-size: 14px; color: var(--text); }
+
+.m-last { min-height: 0; }
+.m-feed { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; overflow: hidden; }
+.m-row { display: grid; grid-template-columns: 10px 1fr auto; column-gap: 8px; row-gap: 2px; align-items: center; font-size: 12.5px; }
 .m-dot { width: 6px; height: 6px; border-radius: 50%; background: #2ee58f; }
-.m-row.run .m-dot { background: #ffb21e; box-shadow: 0 0 8px #ffb21e; animation: pulse 0.8s ease-in-out infinite; }
+.m-row.run .m-dot { background: #b98cff; box-shadow: 0 0 8px #b98cff; animation: pulse 0.8s ease-in-out infinite; }
 .m-row.fail .m-dot { background: #ff3d5a; box-shadow: 0 0 8px #ff3d5a; }
 .m-what { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .m-row.fail .m-what { color: #ff8a9a; }
-.m-at { font-family: var(--mono); font-size: 10px; color: var(--dim); }
+.m-at { font-family: var(--mono); font-size: 10.5px; color: var(--dim); }
+.m-row.run .m-at { color: #b98cff; }
 .m-detail {
   grid-column: 2 / 4;
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 11px;
   color: var(--dim);
   white-space: nowrap;
   overflow: hidden;

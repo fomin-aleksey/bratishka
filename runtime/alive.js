@@ -218,9 +218,11 @@ export function demoCalls(from, to) {
 /** The figures the demos show. */
 export const DEMO_VITALS = {
   context: 38,
+  tokens: 380_000,
+  window: 1_000_000,
   limits: [
-    { kind: 'five_hour', used: 34 },
-    { kind: 'seven_day', used: 12 },
+    { kind: 'five_hour', used: 34, resets: Date.now() / 1000 + 8040 },
+    { kind: 'seven_day', used: 12, resets: Date.now() / 1000 + 273_600 },
   ],
   usd: 3.42,
   ageMs: 5_025_000,

@@ -317,15 +317,25 @@ const detailOf = (input: Record<string, unknown>): string => {
   return flat.length > DETAIL_LIMIT ? `${flat.slice(0, DETAIL_LIMIT)}…` : flat
 }
 
+/** When a rate limit resets, in Unix seconds; null when unknown. */
+const resetsOf = (at: string | undefined): number | null => {
+  const ms = at ? Date.parse(at) : Number.NaN
+
+  return Number.isFinite(ms) ? ms / 1000 : null
+}
+
 /**
- * The session's figures for the monitor: how full the context is, the rate
- * limits, the cost, how long the session has run and its model.
+ * The session's figures for the monitor: how full the context is (in percent
+ * and in tokens of its window), the rate limits and when they reset, the
+ * cost, how long the session has run and its model.
  */
 const sendVitals = async ($: EngineInterface): Promise<void> => {
   const usage = await $.session.usage()
   await tell($, '/api/vitals', {
     context: usage.context.percent ?? null,
-    limits: usage.rateLimits.map(one => ({ kind: one.kind, used: one.percentUsed })),
+    tokens: usage.context.tokens ?? null,
+    window: usage.context.window,
+    limits: usage.rateLimits.map(one => ({ kind: one.kind, used: one.percentUsed, resets: resetsOf(one.resetsAt) })),
     usd: usage.cost?.usd ?? null,
     ageMs: Math.max(0, (await $.clock.now()) - usage.startedAt),
     model: await $.session.model(),

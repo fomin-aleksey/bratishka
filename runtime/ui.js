@@ -643,6 +643,9 @@ const life = createLife()
 const monitor = createMonitor($('monitor'))
 const status = createStatus({
   label: $('headLabel'),
+  code: $('headCode'),
+  caption: $('headCaption'),
+  rain: $('headRain'),
   word: $('headWord'),
   glow: $('headGlow'),
   dot: $('headDot'),
@@ -748,7 +751,8 @@ function tick(now) {
     now: Date.now() / 1000,
   })
   // The monitor keeps the heartbeat: the heart in the chest beats with it.
-  const { sinceBeat } = monitor.frame(dt, { state, level: motion.level, mic: motion.mic * motion.listen })
+  const vital = monitor.frame(dt, { state, level: motion.level, mic: motion.mic * motion.listen })
+  const { sinceBeat } = vital
   const view = robot.frame({
     time: now / 1000,
     flow: motion.flow,
@@ -771,9 +775,11 @@ function tick(now) {
   // The status beside the head, its line to the temple, beating with the heart.
   status.show(
     build < 1 ? assembling(build) : WORDS[state],
+    state,
     Math.exp(-sinceBeat * 5),
     robot.toScreen(0.4, 0.5, view.shift, view.zoom),
     robot.toScreen(0.205, 0.43, view.shift, view.zoom),
+    { ...vital, mic: motion.mic * motion.listen, level: motion.level * motion.speak },
   )
   requestAnimationFrame(tick)
 }

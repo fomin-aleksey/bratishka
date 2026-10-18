@@ -843,8 +843,10 @@ class Handler(BaseHTTPRequestHandler):
         limits = data.get("limits") if isinstance(data.get("limits"), list) else []
         vitals = {
             "context": number(data.get("context")),
+            "tokens": number(data.get("tokens")),
+            "window": number(data.get("window")),
             "limits": [
-                {"kind": str(one.get("kind") or "")[:20], "used": number(one.get("used"))}
+                {"kind": str(one.get("kind") or "")[:20], "used": number(one.get("used")), "resets": number(one.get("resets"))}
                 for one in limits[:4]
                 if isinstance(one, dict) and number(one.get("used")) is not None
             ],
