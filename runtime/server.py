@@ -104,6 +104,7 @@ STATIC = {
     "/landscape.js": ("landscape.js", "text/javascript; charset=utf-8"),
     "/scene.js": ("scene.js", "text/javascript; charset=utf-8"),
     "/ui.js": ("ui.js", "text/javascript; charset=utf-8"),
+    "/voicefx.js": ("voicefx.js", "text/javascript; charset=utf-8"),
     "/head.js": ("head.js", "text/javascript; charset=utf-8"),
     "/rain.js": ("rain.js", "text/javascript; charset=utf-8"),
     "/alive.js": ("alive.js", "text/javascript; charset=utf-8"),

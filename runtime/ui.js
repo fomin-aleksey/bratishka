@@ -4,6 +4,7 @@
 import { DEMO_VITALS, createLife, createMic, createTalk, demoCalls, demoCycle, fakeVoice } from './alive.js'
 import { createMonitor, monitorState } from './monitor.js'
 import { createRobot } from './robot.js'
+import { VOICES, createVoiceFx } from './voicefx.js'
 import { WORDS, assembling, createStatus } from './status.js'
 
 const $ = id => document.getElementById(id)
@@ -80,7 +81,13 @@ const post = (path, data = {}) =>
 
 // ------------------------------------------------------------------ audio
 
-const audio = { ctx: null, analyser: null, wave: null }
+/**
+ * The robot's voice (voicefx.js): Silero's speech through a light metal
+ * ring. ?voice=<name> tries another preset, ?voice=none the plain voice.
+ */
+const VOICE = params.has('voice') ? params.get('voice') : 'metal'
+
+const audio = { ctx: null, analyser: null, wave: null, voice: null }
 
 function setupAudio() {
   const ctx = new AudioContext()
@@ -90,7 +97,10 @@ function setupAudio() {
   analyser.minDecibels = -90
   analyser.maxDecibels = -22
   analyser.connect(ctx.destination)
-  Object.assign(audio, { ctx, analyser, wave: new Float32Array(analyser.fftSize) })
+  // The speech goes through the voice's effects before the analyser, so the face follows what is heard.
+  const voice = createVoiceFx(ctx, Object.hasOwn(VOICES, VOICE) ? VOICE : null)
+  voice.output.connect(analyser)
+  Object.assign(audio, { ctx, analyser, wave: new Float32Array(analyser.fftSize), voice })
   if (ctx.state !== 'running') {
     showNotice('Кликни по окну: браузер ждёт разрешения на звук')
     const unlock = () =>
@@ -238,7 +248,7 @@ async function pump() {
     if (generation !== speech.generation) return
     const source = audio.ctx.createBufferSource()
     source.buffer = buffer
-    source.connect(audio.analyser)
+    source.connect(audio.voice.input)
     const ended = new Promise(resolve => (source.onended = resolve))
     speech.current = { part, source, start: audio.ctx.currentTime, duration: buffer.duration, words: showSubtitle(part.text) }
     source.start()
