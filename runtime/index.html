@@ -67,12 +67,13 @@
       </div>
     </section>
 
-    <section class="m-block" title="Вызовы инструментов за последние 10 минут, столбик на полминуты">
-      <div class="m-label">АКТИВНОСТЬ<span class="m-note">10 минут</span></div>
-      <canvas class="m-activity" data-m="activity" aria-hidden="true"></canvas>
-      <div class="m-counts">
-        <span>вызовов <b data-m="calls">0</b></span><span>ошибок <b data-m="fails">0</b></span><span>в работе <b data-m="running">0</b></span>
+    <section class="m-block" title="Вызовы инструментов за последние 10 минут, столбик на полминуты: зелёным готовые, красным сбои, оранжевым те, что ещё идут">
+      <div class="m-label">АКТИВНОСТЬ<span class="m-note" data-m="callsNote">10 минут</span></div>
+      <div class="m-legend">
+        <span class="m-count ok">готово <b data-m="done">0</b></span><span class="m-count fail">сбои <b data-m="fails">0</b></span><span class="m-count run">в работе <b data-m="running">0</b></span>
       </div>
+      <canvas class="m-activity" data-m="activity" aria-hidden="true"></canvas>
+      <div class="m-axis" aria-hidden="true"><span>−10 мин</span><span>−5 мин</span><span>сейчас</span></div>
     </section>
 
     <section class="m-block m-last">

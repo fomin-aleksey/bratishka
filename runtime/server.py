@@ -121,8 +121,12 @@ STATIC = {
 
 # What only the window's owner may post: the mod's own reports of its session.
 FROM_THE_OWNER = ("/api/say", "/api/message", "/api/status", "/api/action", "/api/vitals")
-# What the monitor keeps: the last calls, and how long a call's subject may be.
+# What the monitor keeps: the feed's last calls, besides every call of the
+# activity chart's ten minutes (and its half-minute bar), at most so many;
+# and how long a call's subject may be.
 ACTIONS = 8
+ACTIONS_SECONDS = 630
+ACTIONS_MAX = 400
 ACTION_STATES = ("run", "ok", "fail")
 TEXT_LIMIT = 120
 SESSION_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
@@ -318,7 +322,9 @@ class Hub:
             if known:
                 self.actions = [{**one, "state": action["state"]} if one["id"] == action["id"] else one for one in self.actions]
             else:
-                self.actions = [*self.actions, action][-ACTIONS:]
+                kept = [*self.actions, action]
+                fresh = action["at"] - ACTIONS_SECONDS
+                self.actions = [one for i, one in enumerate(kept) if i >= len(kept) - ACTIONS or one["at"] >= fresh][-ACTIONS_MAX:]
         self.broadcast("action", action)
 
     def set_vitals(self, vitals: dict) -> None:

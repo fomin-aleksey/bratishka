@@ -598,19 +598,37 @@ body.calm:not(.panel-open) { cursor: none; }
 .m-note { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; color: var(--dim); }
 
 .m-activity { display: block; width: 100%; height: 46px; }
-.m-counts { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; color: var(--dim); }
-.m-counts b { margin-left: 5px; font-weight: 500; font-size: 14px; color: var(--text); }
+/* The legend sits above the chart, grouped, so no count reads as the caption of the bars over it;
+   each counts the bars of its color, in the jarvis mod's colors: green done, red failed, orange still running. */
+.m-legend { display: flex; flex-wrap: wrap; gap: 4px 18px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; color: var(--dim); }
+.m-legend b { margin-left: 5px; font-weight: 500; font-size: 14px; color: var(--text); }
+.m-count { --outcome: #2ee58f; display: inline-flex; align-items: baseline; }
+.m-count.fail { --outcome: #ff3d5a; }
+.m-count.run { --outcome: #ff7a2e; }
+.m-count::before { content: ''; align-self: center; width: 9px; height: 9px; margin-right: 7px; border-radius: 2px; background: var(--outcome); }
+.m-axis { display: flex; justify-content: space-between; margin-top: -4px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; color: var(--dim); }
 
 .m-last { min-height: 0; }
 .m-feed { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; overflow: hidden; }
 .m-row { display: grid; grid-template-columns: 10px 1fr auto; column-gap: 8px; row-gap: 2px; align-items: center; font-size: 12.5px; }
-.m-dot { width: 6px; height: 6px; border-radius: 50%; background: #2ee58f; }
-.m-row.run .m-dot { background: #b98cff; box-shadow: 0 0 8px #b98cff; animation: pulse 0.8s ease-in-out infinite; }
-.m-row.fail .m-dot { background: #ff3d5a; box-shadow: 0 0 8px #ff3d5a; }
+/* The marks and colors of the jarvis mod's feed: ✓ done, ✕ failed, ◌ still running. */
+.m-dot { font-size: 11px; line-height: 1; text-align: center; color: #2ee58f; }
+/* The ◌ glyph comes out a speck in the fallback font, so the running mark is drawn as a dotted ring. */
+.m-row.run .m-dot {
+  width: 9px;
+  height: 9px;
+  box-sizing: border-box;
+  font-size: 0;
+  border: 2px dotted #ff7a2e;
+  border-radius: 50%;
+  box-shadow: 0 0 6px rgba(255, 122, 46, 0.6);
+  animation: pulse 0.8s ease-in-out infinite;
+}
+.m-row.fail .m-dot { color: #ff3d5a; }
 .m-what { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .m-row.fail .m-what { color: #ff8a9a; }
 .m-at { font-family: var(--mono); font-size: 10.5px; color: var(--dim); }
-.m-row.run .m-at { color: #b98cff; }
+.m-row.run .m-at { color: #ff7a2e; }
 .m-detail {
   grid-column: 2 / 4;
   font-family: var(--mono);
