@@ -390,6 +390,9 @@ uniform float u_think;
 uniform float u_build;
 uniform float u_reveal;
 uniform vec4 u_heart;
+uniform float u_sleep;
+uniform float u_wake;
+uniform float u_glitch;
 out vec4 o;
 ${COMMON}
 ${HEAD_GLSL}
@@ -399,7 +402,20 @@ const float REVEAL_REACH = ${REVEAL_REACH.toFixed(1)};
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 
 void main() {
-  vec2 screen = (v_uv * 2.0 - 1.0) * u_view;
+  // A glitch on a failure tears the picture into bands slid sideways, now
+  // and then a thick slab further, and splits its colors.
+  vec2 uv = v_uv;
+  float split = 0.0;
+  if (u_glitch > 0.001) {
+    float tick = floor(u_time * 18.0);
+    float band = floor(v_uv.y * 26.0);
+    float torn = step(1.0 - 0.6 * u_glitch, hash(vec2(band, tick)));
+    uv.x += (hash(vec2(band + 7.0, tick)) - 0.5) * 0.14 * u_glitch * torn;
+    float slab = floor(v_uv.y * 5.0);
+    uv.x += (hash(vec2(slab, tick + 3.0)) - 0.5) * 0.06 * u_glitch * step(0.7, hash(vec2(slab + 1.0, tick)));
+    split = 0.009 * u_glitch;
+  }
+  vec2 screen = (uv * 2.0 - 1.0) * u_view;
   vec2 w = (screen - vec2(u_shift, 0.0)) / u_zoom + vec2(0.0, CAM_Y);
   float lv = u_level * u_speak;
   float breathe = u_head.w;
@@ -411,7 +427,7 @@ void main() {
   // The backdrop of glyphs: never through the figure, opened by the intro's shock.
   float inside = 1.0 - smoothstep(-0.006, 0.006, abs(w.x) - figureWidth(w.y));
   float opened = smoothstep(u_reveal, u_reveal - 0.15, length(w - HEAD));
-  bg += backdrop(gl_FragCoord.xy) * (1.0 - inside) * opened;
+  bg += backdrop(gl_FragCoord.xy + vec2((uv.x - v_uv.x) * u_res.x, 0.0)) * (1.0 - inside) * opened;
   float hd = length((w - u_crown) / vec2(0.6, 0.68));
   bg += ${glsl(P.dim, 0.14)} * exp(-hd * hd * 2.2) * (0.6 + 0.2 * breathe + 0.9 * lv) * shown;
   float cd = length((w - coreNow()) / vec2(0.19, 0.17));
@@ -447,10 +463,24 @@ void main() {
     bg += ${glsl(P.dim, 0.2)} * step(sd, u_reveal) * fade * 0.6;
   }
 
-  vec3 scene = texture(u_scene, v_uv).rgb;
-  vec3 bloom = texture(u_bloomA, v_uv).rgb * 1.0 + texture(u_bloomB, v_uv).rgb * 1.25;
-  vec3 c = bg + scene + bloom;
+  vec3 scene = vec3(
+    texture(u_scene, uv + vec2(split, 0.0)).r,
+    texture(u_scene, uv).g,
+    texture(u_scene, uv - vec2(split, 0.0)).b
+  );
+  vec3 bloom = texture(u_bloomA, uv).rgb * 1.0 + texture(u_bloomB, uv).rgb * 1.25;
+  // Asleep the figure dims to a glimmer and the backdrop with it; woken, it flares.
+  float lit = 1.0 - 0.62 * u_sleep + 0.9 * u_wake;
+  vec3 c = bg * (1.0 - 0.4 * u_sleep) + (scene + bloom) * lit;
+  c = mix(c, c * vec3(1.35, 0.55, 0.6), 0.45 * u_glitch);
   c = vec3(1.0) - exp(-c * 1.15);
+  // The glitch's scan lines and a few blocks flashing out.
+  if (u_glitch > 0.001) {
+    c *= 1.0 - 0.24 * u_glitch * step(0.5, fract(gl_FragCoord.y * 0.25));
+    vec2 block = floor(gl_FragCoord.xy / vec2(48.0, 14.0));
+    float flash = step(1.0 - 0.025 * u_glitch, hash(block + floor(u_time * 18.0)));
+    c = mix(c, vec3(1.0, 0.24, 0.35), flash * 0.7);
+  }
 
   float vig = smoothstep(1.55, 0.35, length((v_uv - 0.5) * vec2(u_view.x / u_view.y, 1.0) * 1.25));
   c *= mix(0.55, 1.0, vig);
@@ -729,6 +759,9 @@ export function createRobot(canvas) {
       gl.uniform4fv(cu.u_sway, state.sway)
       gl.uniform4fv(cu.u_heart, heart)
       gl.uniform3fv(cu.u_tint, state.tint)
+      gl.uniform1f(cu.u_sleep, state.sleep ?? 0)
+      gl.uniform1f(cu.u_wake, state.wake ?? 0)
+      gl.uniform1f(cu.u_glitch, state.glitch ?? 0)
       bindTex(3, glyphs, cu.u_glyphs)
       bindTex(4, shape, cu.u_shape)
       gl.uniform2f(cu.u_res, canvas.width, canvas.height)

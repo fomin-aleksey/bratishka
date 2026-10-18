@@ -2,6 +2,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import { MAX_TOKENS, SPEECH_SYSTEM, cleanForSpeech, fallbackSpeech, isLevel, pieces, speechPrompt } from './speech'
 import type { Level } from './speech'
+import { kindOf } from './calls'
 import { PERSONA, PERSONA_ID } from './persona'
 import { SCREENS_SCRIPT, parseScreens, secondScreen } from './screens'
 import { createVoice } from './voice'
@@ -408,14 +409,16 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // The monitor's feed: each call as it starts and as it ends. Fire and
-  // forget, so a missing robot never holds a call up; should the hook fail,
-  // the call goes on as if it were not here.
+  // The monitor's feed: each call as it starts and as it ends, and whether it
+  // runs tests (the window glitches harder when they fail). Fire and forget,
+  // so a missing robot never holds a call up; should the hook fail, the call
+  // goes on as if it were not here.
   let calls = 0
   on('tool.call', async ($, e, next) => {
     calls += 1
     const id = e.tool_use_id || `call-${calls}`
-    const action = { id, tool: e.tool, detail: detailOf(e as unknown as Record<string, unknown>), sub: e.agentId !== undefined }
+    const input = e as unknown as Record<string, unknown>
+    const action = { id, tool: e.tool, detail: detailOf(input), kind: kindOf(e.tool, input), sub: e.agentId !== undefined }
     const report = (state: string) => void tell($, '/api/action', { ...action, state }).catch(() => undefined)
     report('run')
     const ran = await next(e)

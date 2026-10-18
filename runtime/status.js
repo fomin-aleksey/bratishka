@@ -1,6 +1,7 @@
 // The status beside the robot's head: a panel in the color of what the robot
 // is doing (blue listening, green thinking, white speaking, violet at work,
-// pink with agents, red on a failure), a leader line from the temple to it
+// pink with agents, red on a failure; bored, asleep, startled awake or proud
+// when nobody needs it), a leader line from the temple to it
 // and a faint rain of glyphs behind its text. A new word decodes itself out
 // of katakana, as on the screens in The Matrix; under it lines of code tick
 // out what the robot is doing, typed in the same way. A word holds a moment
@@ -15,6 +16,10 @@ export const COLORS = {
   tools: '#B98CFF',
   agents: '#FF6FCF',
   fail: '#FF3D5A',
+  bored: '#5BB8FF',
+  sleep: '#4A63D9',
+  wake: '#FFE14D',
+  proud: '#FFC93C',
 }
 
 /** The robot's states in words. */
@@ -25,6 +30,10 @@ export const WORDS = {
   tools: 'ВЫПОЛНЯЮ',
   agents: 'ФОНОВЫЕ ЗАДАЧИ',
   fail: 'СБОЙ',
+  bored: 'СКУЧАЮ',
+  sleep: 'СПЛЮ',
+  wake: 'А? НЕ СПЛЮ!',
+  proud: 'ДОВОЛЕН',
 }
 
 /** The intro's word, with how far the figure has assembled. */
@@ -62,6 +71,10 @@ const CODE = {
   tools: f => [`> exec ${cut(f.doing || 'команда', 24)}`, `> в работе: ${f.running}`, `> pid ${hex(5)} · пульс ${f.bpm}`],
   agents: f => [`> агенты в работе: ${f.running}`, `> sync 0x${hex(6)}`, `> пульс ${f.bpm}`],
   fail: f => [`> ERR ${cut(f.doing || 'вызов', 24)}`, `> trace 0x${hex(8)}`, `> повтор … ${hex(2)}`],
+  bored: f => [`> клиентов нет · пульс ${f.bpm}`, `> зевок 0x${hex(4)}`, `> жду ввод · ${hex(6)}`],
+  sleep: f => [`> режим сна · пульс ${f.bpm}`, `> z z z 0x${hex(4)}`, `> вход по голосу`],
+  wake: f => [`> подъём! пульс ${f.bpm}`, `> я не спал 0x${hex(4)}`, `> канал открыт`],
+  proud: f => [`> похвала принята`, `> самооценка ${bar(1)}`, `> пульс ${f.bpm} · ${hex(4)}`],
 }
 
 /** `text` typed in `p` of the way (0 to 1): settled up to there, scrambling just past, blank after. */

@@ -110,6 +110,7 @@ STATIC = {
     "/alive.js": ("alive.js", "text/javascript; charset=utf-8"),
     "/monitor.js": ("monitor.js", "text/javascript; charset=utf-8"),
     "/status.js": ("status.js", "text/javascript; charset=utf-8"),
+    "/fx.js": ("fx.js", "text/javascript; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
     "/sounds/transform.mp3": ("sounds/transform.mp3", "audio/mpeg"),
     "/sounds/impact.mp3": ("sounds/impact.mp3", "audio/mpeg"),
@@ -128,6 +129,8 @@ ACTIONS = 8
 ACTIONS_SECONDS = 630
 ACTIONS_MAX = 400
 ACTION_STATES = ("run", "ok", "fail")
+# What a call may mean to the robot's effects: tests run (failed tests glitch it harder).
+ACTION_KINDS = ("test",)
 TEXT_LIMIT = 120
 SESSION_ID = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 # A turn's id, as the mod names the answer its speech belongs to.
@@ -835,6 +838,7 @@ class Handler(BaseHTTPRequestHandler):
             "detail": str(data.get("detail") or "")[:TEXT_LIMIT],
             "state": data.get("state"),
             "sub": data.get("sub") is True,
+            "kind": data.get("kind") if data.get("kind") in ACTION_KINDS else "",
             "at": time.time(),
         }
         if not action["id"] or not action["tool"] or action["state"] not in ACTION_STATES:

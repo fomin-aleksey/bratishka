@@ -394,6 +394,24 @@ test('a failed command shows its description, not the command, and is marked fai
   ])
 })
 
+test('a call tells the monitor when it runs tests', async ($, on) => {
+  const clock = mock.clock(on)
+  const robot = world(on, { owner: ME })
+  on('tool.call', async () => ({ result: { stdout: 'ok', stderr: '' } }) as never)
+  await $.session.start({ cwd: '/work', source: 'startup' } as never)
+
+  await $.tool.call({ tool: 'Bash', command: 'npm test', description: 'Run the tests' } as never)
+  await $.tool.call({ tool: 'Read', file_path: '/work/README.md' } as never)
+  await clock.settle()
+
+  expect(robot.posts.map(post => [post.body.tool, post.body.state, post.body.kind])).toEqual([
+    ['Bash', 'run', 'test'],
+    ['Bash', 'ok', 'test'],
+    ['Read', 'run', ''],
+    ['Read', 'ok', ''],
+  ])
+})
+
 test('the session\'s figures reach the monitor when the engine measures them', async ($, on) => {
   const clock = mock.clock(on)
   const robot = world(on, { owner: ME })

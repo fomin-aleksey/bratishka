@@ -1,7 +1,19 @@
 // The robot window: events from the server, the speech queue, the analyser
 // that lights the robot, subtitles, the text panel and the controls.
 
-import { DEMO_VITALS, createLife, createMic, createTalk, demoCalls, demoCycle, fakeVoice } from './alive.js'
+import {
+  DEMO_VITALS,
+  createLife,
+  createMic,
+  createMood,
+  createTalk,
+  demoCalls,
+  demoCycle,
+  demoEvents,
+  fakeVoice,
+  isPraise,
+} from './alive.js'
+import { createFx, failureOf } from './fx.js'
 import { createMonitor, monitorState } from './monitor.js'
 import { createRobot } from './robot.js'
 import { VOICES, createVoiceFx } from './voicefx.js'
@@ -30,8 +42,10 @@ const params = new URLSearchParams(location.search)
 // ?demo=speak fakes a voice (?demo=loud a loud one), ?demo=think the
 // thinking state, ?demo=mic the person speaking into the microphone and
 // ?demo=cycle all three in turn, to show the robot off without a
-// conversation; ?panel=0 or 1 sets the text window, ?monitor=0 or 1 the
-// monitor on the left; ?intro=0 skips the assembly.
+// conversation; ?demo=sleep gets bored, yawns, nods off and is woken with a
+// start in half a minute, ?demo=events glitches on made-up failures and is
+// pleased with praise; ?panel=0 or 1 sets the text window, ?monitor=0 or 1 the monitor on
+// the left; ?intro=0 skips the assembly.
 const demo = params.get('demo')
 
 /** How long the figure takes to assemble out of the orb when the window opens. */
@@ -587,6 +601,9 @@ const stir = () => {
 }
 window.addEventListener('pointermove', stir)
 window.addEventListener('pointerdown', stir)
+// A click or a key in the window: somebody is there.
+window.addEventListener('pointerdown', () => mood.poke(performance.now() / 1000))
+window.addEventListener('keydown', () => mood.poke(performance.now() / 1000))
 
 // ------------------------------------------------------------------ events
 
@@ -608,11 +625,18 @@ function connect() {
   events.addEventListener('action', e => takeAction(JSON.parse(e.data)))
   events.addEventListener('vitals', e => monitor.vitals(JSON.parse(e.data)))
   events.addEventListener('level', e => setLevel(JSON.parse(e.data).level))
-  events.addEventListener('status', e => (ui.status = demo === 'think' ? 'thinking' : JSON.parse(e.data).status))
-  events.addEventListener('message', e => appendMessage(JSON.parse(e.data)))
+  events.addEventListener('status', e => {
+    ui.status = demo === 'think' ? 'thinking' : JSON.parse(e.data).status
+    mood.poke(performance.now() / 1000)
+  })
+  events.addEventListener('message', e => takeMessage(JSON.parse(e.data)))
   events.addEventListener('part', e => enqueuePart(JSON.parse(e.data)))
   events.addEventListener('end', e => endJob(JSON.parse(e.data)))
-  events.addEventListener('stop', () => stopAll())
+  // A stop comes as the person starts speaking (or presses Esc): it wakes the robot too.
+  events.addEventListener('stop', () => {
+    stopAll()
+    mood.poke(performance.now() / 1000)
+  })
   events.addEventListener('fail', e => showNotice(JSON.parse(e.data).message, 6000))
   events.addEventListener('replaced', () => {
     ui.replaced = true
@@ -653,7 +677,10 @@ const talk = createTalk()
 const rgbOf = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
 /** The sparks' color, gliding to the color of each new state. */
 let tint = rgbOf(COLORS.think)
-const life = createLife()
+const life = createLife(7, demo === 'sleep' ? { yawnEvery: [5, 7] } : {})
+/** Bored after three minutes with nothing to do, asleep after ten; the demo in seconds. */
+const mood = createMood(demo === 'sleep' ? { boredAfter: 3, sleepAfter: 13 } : {})
+const fx = createFx(() => audio.ctx)
 const monitor = createMonitor($('monitor'))
 const status = createStatus({
   label: $('headLabel'),
@@ -670,12 +697,31 @@ const status = createStatus({
 })
 /** When a call last failed, in seconds: the monitor's trace goes red for a while. */
 let failAt = -1e9
+/** When the robot last flinched at a failure, in performance.now() seconds. */
+let flinchAt = -1e9
 /** Where the demo's clock was on the last frame. */
 let demoFrom = 0
 
 function takeAction(call) {
+  const t = performance.now() / 1000
   if (call.state === 'fail') failAt = Date.now() / 1000
   monitor.action(call)
+  mood.poke(t)
+  // A failure: a glitch and a flinch.
+  const failure = failureOf(call)
+  if (failure) {
+    fx.fail(t, failure.tests)
+    flinchAt = t
+  }
+}
+
+/** The person wrote or said something: it stirs the robot, and praise makes it proud. */
+function takeMessage(message) {
+  appendMessage(message)
+  if (message.role !== 'user') return
+  const t = performance.now() / 1000
+  if (isPraise(message.text)) mood.praise(t)
+  else mood.poke(t)
 }
 const mic = createMic(
   () => audio.ctx,
@@ -688,6 +734,9 @@ const demoAt = t => {
   if (demo === 'speak' || demo === 'loud') return { speaking: true, thinking: false, mic: 0 }
   if (demo === 'think') return { speaking: false, thinking: true, mic: 0 }
   if (demo === 'mic') return { speaking: false, thinking: false, mic: fakeVoice(t) }
+  // Woken by the person speaking, half a minute after the page opened and every half minute on.
+  if (demo === 'sleep') return { speaking: false, thinking: false, mic: t % 30 > 24 && t % 30 < 26.5 ? fakeVoice(t) : 0 }
+  if (demo === 'events') return { speaking: false, thinking: false, mic: 0 }
   return null
 }
 
@@ -719,6 +768,12 @@ function listen(dt) {
   motion.offset = said.offset
   motion.talking = said.talking
   if (demo === 'cycle') for (const call of demoCalls(demoFrom, time)) takeAction(call)
+  if (demo === 'events') {
+    for (const one of demoEvents(demoFrom, time)) {
+      if (one.praise) takeMessage({ role: 'user', text: one.praise, at: Date.now() / 1000 })
+      else takeAction(one)
+    }
+  }
   demoFrom = time
   const thinking = isThinking() && !said.talking
   motion.think += ((thinking ? 1 : 0) - motion.think) * Math.min(1, dt * 2.5)
@@ -756,13 +811,28 @@ function tick(now) {
   motion.center += (monitorWidth + (width - panelWidth - monitorWidth) / 2 - motion.center) * ease
   motion.free += (width - panelWidth - monitorWidth - motion.free) * ease
   const build = introBuild(now)
-  const pose = life(now / 1000, dt, { think: motion.think, speak: motion.speak, level: motion.level })
+  const t = now / 1000
+  // Nobody needs it while it neither talks nor thinks nor works nor hears the person.
+  const working = monitor.actions().some(one => one.state === 'run' && Date.now() / 1000 - one.at < 600)
+  const busy = motion.talking || isThinking() || working || motion.mic > 0.12 || build < 1.2
+  const rest = mood.frame(t, dt, busy)
+  const pose = life(t, dt, {
+    think: motion.think,
+    speak: motion.speak,
+    level: motion.level,
+    bored: rest.bored,
+    sleep: rest.sleep,
+    wakeAt: rest.wakeAt,
+    flinchAt,
+    prideAt: rest.prideAt,
+  })
   const state = monitorState({
     talking: motion.talking,
     thinking: isThinking(),
     actions: monitor.actions(),
     failAt,
     now: Date.now() / 1000,
+    rest: rest.rest,
   })
   // The monitor keeps the heartbeat: the heart in the chest beats with it.
   const vital = monitor.frame(dt, { state, level: motion.level, mic: motion.mic * motion.listen })
@@ -787,6 +857,9 @@ function tick(now) {
     ear: motion.ear,
     sinceBeat,
     tint,
+    sleep: rest.sleep,
+    wake: t >= rest.wakeAt ? Math.exp(-(t - rest.wakeAt) * 2.2) : 0,
+    glitch: fx.frame(t),
   })
   followSubtitle()
   // The status beside the head, its line to the temple, beating with the heart.

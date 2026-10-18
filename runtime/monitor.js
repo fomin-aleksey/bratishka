@@ -17,6 +17,10 @@ const STATES = {
   tools: { color: COLORS.tools, bpm: 116 },
   agents: { color: COLORS.agents, bpm: 124 },
   fail: { color: COLORS.fail, bpm: 138 },
+  bored: { color: COLORS.bored, bpm: 56 },
+  sleep: { color: COLORS.sleep, bpm: 44 },
+  wake: { color: COLORS.wake, bpm: 132 },
+  proud: { color: COLORS.proud, bpm: 96 },
 }
 const AMBER = '#FFB21E'
 const RED = '#FF3D5A'
@@ -492,8 +496,12 @@ export function createMonitor(root) {
   }
 }
 
-/** The state the monitor shows: talking, a fresh failure, calls under way, thinking or listening. */
-export function monitorState({ talking, thinking, actions, failAt, now }) {
+/**
+ * The state the monitor shows: talking, a fresh failure, calls under way,
+ * thinking, or else the robot's mood while nobody needs it (`rest`: startled
+ * awake, proud, asleep or bored), or listening.
+ */
+export function monitorState({ talking, thinking, actions, failAt, now, rest = null }) {
   if (talking) return 'speak'
   if (now - failAt < 4) return 'fail'
   const running = actions.filter(one => one.state === 'run' && now - one.at < 600)
@@ -501,5 +509,5 @@ export function monitorState({ talking, thinking, actions, failAt, now }) {
   const recent = actions.some(one => now - one.at < 1.2)
   if (running.length || (thinking && recent)) return 'tools'
   if (thinking) return 'think'
-  return 'listen'
+  return rest ?? 'listen'
 }
