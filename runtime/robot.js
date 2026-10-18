@@ -7,14 +7,15 @@
 // by its kind, the voice's loudness, the state
 // (listening, thinking, speaking) and the intro. Particles are drawn
 // additively into a float buffer, blurred twice for the glow and composed
-// over a procedural background. The head's pose and the sparks it thinks
-// with come from head.js.
+// over the backdrop of glyphs (rain.js). The head's pose and the sparks it
+// thinks with come from head.js.
 
 import { BUST_END, CAM_Y, FLOATS, HEAD, HEART, KIND } from './kinds.js'
 import { figureHalfWidth } from './figure.js'
 import { pulseAt } from './alive.js'
 import { HEAD_GLSL, HEAD_KINDS, headFrame } from './head.js'
 import { PALETTE as P, glsl } from './palette.js'
+import { backdropGlsl, paintGlyphs } from './rain.js'
 import { buildScene } from './scene.js'
 
 /** The closest the camera comes, and the farthest it backs off for a narrow window. */
@@ -22,7 +23,7 @@ const MAX_ZOOM = 1.45
 const MIN_ZOOM = 0.6
 /** How wide a view, in world units, the figure wants to itself. */
 const FIT_WIDTH = 1.5
-/** How long the shock that opens the mountains runs, in shares of the intro. */
+/** How long the shock that opens the backdrop runs, in shares of the intro. */
 const REVEAL = 0.35
 const REVEAL_REACH = 4
 
@@ -109,22 +110,6 @@ float heat(vec2 p) {
     }
   }
   return h;
-}
-
-/**
- * How a range's point drifts above its place, on its own clock whatever the
- * voice does: a slow swell rolling outwards across the ranges and a faint
- * shimmer of the point's own.
- */
-float drift(float x, float seed, float near) {
-  float swell = sin(abs(x) * 3.0 + near * 4.0 - u_time * 0.45) * (0.003 + 0.004 * near);
-  float shimmer = 0.0012 * sin(u_time * (1.0 + 2.0 * hash(seed * 7.9)) + seed * 40.0);
-  return swell + shimmer;
-}
-
-/** A slow band of light sweeping outwards over the ranges, 0 to 1. */
-float glint(float x, float near) {
-  return pow(0.5 + 0.5 * sin(abs(x) * 2.2 + near * 1.5 - u_time * 0.35), 6.0);
 }
 
 /**
@@ -248,34 +233,6 @@ void main() {
     float twinkle = 0.5 + 0.5 * sin(u_time * (3.0 + seed * 5.0) + seed * 70.0);
     col = mix(MAIN, PALE, hash(seed * 11.0));
     alpha = (1.0 - t) * twinkle * 0.7;
-  } else if (kind == 6) {
-    // Mountains: crests bright, slopes dim, alive on their own: they do not
-    // listen to the voice.
-    pos.y += a_p.y + drift(pos.x, seed, a_p.z);
-    float g = a_p.w;
-    float near = a_p.z;
-    float shine = glint(pos.x, near);
-    col = mix(DIM * 0.6, DIM, 0.5 + 0.5 * near);
-    col = mix(col, MAIN, smoothstep(0.1, 0.7, g));
-    col = mix(col, PALE, smoothstep(0.75, 1.0, g) * 0.8 + shine * 0.3);
-    alpha = (0.38 + 0.95 * g) * (0.65 + 0.35 * near) * a_q.w * (0.8 + 0.2 * sin(u_time * 2.0 + seed * 50.0));
-    alpha += shine * 0.3 * a_q.w;
-  } else if (kind == 10) {
-    // Rivers of light down the slopes, sparks running along them at an even pace.
-    pos.y += a_p.y + drift(pos.x, seed, a_p.z);
-    float run = 0.5 + 0.5 * sin(a_p.w * 9.0 - u_time * 1.2);
-    float spark = smoothstep(0.85, 1.0, run);
-    col = mix(ACCENT, GLOW, hash(seed * 17.0) * 0.7);
-    col = mix(col, HOT, spark * 0.6);
-    alpha = a_q.w * (0.85 + 0.8 * spark);
-    size *= 1.2 + 0.6 * spark;
-  } else if (kind == 11) {
-    // Sparkles on the crests, each firing on its own slow clock.
-    pos.y += a_p.y + drift(pos.x, seed, a_p.z);
-    float fire = 0.5 + 0.5 * sin(u_time * (0.8 + seed * 1.6) + a_q.w);
-    col = mix(MAIN, PALE, 0.5 + 0.5 * fire);
-    alpha = (0.35 + 0.75 * fire) * (0.5 + 0.5 * a_p.w);
-    size *= 1.0 + 0.5 * fire;
   } else if (kind == 7) {
     // Rings round the head, rippling outwards while it listens: brighter,
     // quicker and trembling while the person speaks into the microphone.
@@ -315,7 +272,7 @@ ${HEAD_KINDS}
   // The bust ends at the chest: the body fades out below it.
   if (kind == 2 || kind == 4 || kind == 12) alpha *= smoothstep(BUST_END - 0.16, BUST_END, pos.y);
 
-  bool back = kind == 6 || kind == 7 || (kind >= 9 && kind <= 11);
+  bool back = kind == 7 || kind == 9;
   if (back) {
     // Hidden until the intro's shock has passed.
     alpha *= smoothstep(u_reveal, u_reveal - 0.15, length(pos - HEAD));
@@ -430,6 +387,7 @@ uniform vec4 u_heart;
 out vec4 o;
 ${COMMON}
 ${HEAD_GLSL}
+${backdropGlsl({ main: glsl(P.main), pale: glsl(P.pale), accent: glsl(P.accent), glow: glsl(P.glow) })}
 const float REVEAL_REACH = ${REVEAL_REACH.toFixed(1)};
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
@@ -444,6 +402,10 @@ void main() {
   float shown = smoothstep(0.35, 0.9, u_build);
 
   vec3 bg = mix(${glsl(P.sky, 0.25)}, ${glsl(P.sky)}, smoothstep(-0.8, 0.9, screen.y));
+  // The backdrop of glyphs: never through the figure, opened by the intro's shock.
+  float inside = 1.0 - smoothstep(-0.006, 0.006, abs(w.x) - figureWidth(w.y));
+  float opened = smoothstep(u_reveal, u_reveal - 0.15, length(w - HEAD));
+  bg += backdrop(gl_FragCoord.xy) * (1.0 - inside) * opened;
   float hd = length((w - u_crown) / vec2(0.6, 0.68));
   bg += ${glsl(P.dim, 0.14)} * exp(-hd * hd * 2.2) * (0.6 + 0.2 * breathe + 0.9 * lv) * shown;
   float cd = length((w - coreNow()) / vec2(0.19, 0.17));
@@ -471,7 +433,7 @@ void main() {
   float od = length(w - ORB);
   bg += (${glsl(P.pale)} * exp(-od * od / 0.0005) * 2.2 + ${glsl(P.dim)} * exp(-od * od / 0.008) * 0.9) * orb;
 
-  // The shock that opens the mountains: a bright front, a flash behind it.
+  // The shock that opens the backdrop: a bright front, a flash behind it.
   if (u_reveal > 0.0 && u_reveal < REVEAL_REACH) {
     float sd = length(w - HEAD);
     float fade = 1.0 - u_reveal / REVEAL_REACH;
@@ -558,6 +520,16 @@ export function createRobot(canvas) {
   const copy = program(gl, QUAD_VS, COPY_FS)
   const blur = program(gl, QUAD_VS, BLUR_FS)
   const compose = program(gl, QUAD_VS, COMPOSE_FS)
+
+  // The glyphs of the backdrop, mipmapped so small and blurred ones stay clean.
+  const glyphs = gl.createTexture()
+  gl.bindTexture(gl.TEXTURE_2D, glyphs)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, paintGlyphs())
+  gl.generateMipmap(gl.TEXTURE_2D)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
 
   const quad = gl.createVertexArray()
   gl.bindVertexArray(quad)
@@ -748,6 +720,9 @@ export function createRobot(canvas) {
       gl.uniform4fv(cu.u_head, state.head)
       gl.uniform4fv(cu.u_sway, state.sway)
       gl.uniform4fv(cu.u_heart, heart)
+      bindTex(3, glyphs, cu.u_glyphs)
+      bindTex(4, shape, cu.u_shape)
+      gl.uniform2f(cu.u_res, canvas.width, canvas.height)
       gl.uniform2fv(cu.u_core, head.core)
       gl.uniform2fv(cu.u_crown, head.crown)
       gl.uniform3fv(cu['u_orbits[0]'], head.orbits)

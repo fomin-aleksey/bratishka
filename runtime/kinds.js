@@ -7,11 +7,8 @@ export const KIND = {
   neck: 2,
   torso: 4,
   aura: 5,
-  mountain: 6,
   halo: 7,
   dust: 9,
-  river: 10,
-  sparkle: 11,
   spark: 12,
   orbit: 13,
 }

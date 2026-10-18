@@ -142,10 +142,6 @@ const insideHead = (x, y) => {
   return v > -1.04 && v < 1.06 && Math.abs(x) < headWidth(Math.max(-1, Math.min(1, v))) * HEAD_W * 1.04 + 0.006
 }
 
-const insideBody = (x, y) => y < BODY_TOP && Math.abs(x) < bodyWidth(y)
-
-export const insideFigure = (x, y) => insideHead(x, y) || insideBody(x, y)
-
 /**
  * The figure's half-width at height y, head or body, 0 where neither: what
  * the background hides behind. A little generous, the rim included.

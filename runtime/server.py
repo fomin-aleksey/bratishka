@@ -105,6 +105,7 @@ STATIC = {
     "/scene.js": ("scene.js", "text/javascript; charset=utf-8"),
     "/ui.js": ("ui.js", "text/javascript; charset=utf-8"),
     "/head.js": ("head.js", "text/javascript; charset=utf-8"),
+    "/rain.js": ("rain.js", "text/javascript; charset=utf-8"),
     "/alive.js": ("alive.js", "text/javascript; charset=utf-8"),
     "/monitor.js": ("monitor.js", "text/javascript; charset=utf-8"),
     "/status.js": ("status.js", "text/javascript; charset=utf-8"),

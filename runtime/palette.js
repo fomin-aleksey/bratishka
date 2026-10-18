@@ -1,8 +1,9 @@
 // The robot's colors. Every color of the scene comes from here: pick another
-// palette below and the head, the body, the mountains and the glow follow.
+// palette below and the head, the body, the backdrop and the glow follow.
 //
 // dim: faint lines; main: the body's own color; pale: highlights and rims;
-// accent: veins, rivers, sparks; glow and hot: the face's inner light;
+// accent: sparks and the rain's tails; glow and hot: the face's and the
+// heart's inner light;
 // sky: the background at the top of the window.
 
 export const PALETTES = {
