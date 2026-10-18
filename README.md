@@ -19,7 +19,7 @@
 - Google Chrome. Робот живёт в отдельном окне-приложении со своим профилем.
 - Claude Code с поддержкой модов (проверено на 2.1.299).
 - Python 3.
-- Локальный сервер Silero TTS в `~/.claude/mods/silero-tts`. **В этот репозиторий он не входит.** Робот запускает его как `venv/bin/python server.py` и общается через unix-сокет `tts.sock`. Протокол: одна JSON-строка `{"text", "speaker", "play": false}` на соединение, в ответ по строке `{"wav", "text"}` на каждое предложение и в конце `ok`.
+- Голос робота — локальный сервер Silero TTS [bratishka-golos](https://github.com/fomin-aleksey/bratishka-golos), установленный в `~/.claude/mods/silero-tts`. Это отдельный репозиторий, порядок установки описан в его README. Робот запускает сервер сам, когда тот нужен.
 - [Handy](https://github.com/cjpais/Handy) — по желанию, для голосового ввода и перебивания.
 
 ## Установка
